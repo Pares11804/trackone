@@ -3,7 +3,7 @@ services:
   db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-trackone}
+      POSTGRES_DB: ${POSTGRES_DB:-trackonedb}
       POSTGRES_USER: ${POSTGRES_USER:-trackone}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-trackone}
     ports:

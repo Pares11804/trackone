@@ -41,7 +41,7 @@ The control host is standard Django + PostgreSQL; **Windows works** the same way
    **A. Local PostgreSQL (already installed on this machine)**
 
    1. Make sure the **PostgreSQL service is running** (Windows: *Services* → *postgresql*…; Linux: `sudo systemctl status postgresql`).
-   2. Open a shell as a superuser and create a database user and database (names below match the project defaults; change the password).
+   2. Open a shell as a superuser and create a database user and database. This project uses database name **`trackonedb`** and role **`trackone`** (change the password to something strong).
 
       Using **`psql`** (adjust `-U` if your superuser is not `postgres`):
 
@@ -53,22 +53,20 @@ The control host is standard Django + PostgreSQL; **Windows works** the same way
 
       ```sql
       CREATE USER trackone WITH PASSWORD 'choose_a_strong_password';
-      CREATE DATABASE trackone OWNER trackone;
+      CREATE DATABASE trackonedb OWNER trackone;
       ```
 
-      If you prefer a separate database name (e.g. `trackonedb`), use `CREATE DATABASE trackonedb OWNER trackone;` and set **`POSTGRES_DB=trackonedb`** in your environment—Django’s `POSTGRES_DB` must match that database name exactly.
-
-      On some setups you may need `CREATE DATABASE … OWNER trackone ENCODING 'UTF8';`. If `CREATE USER` fails because the role exists, use `ALTER USER trackone WITH PASSWORD '…';` instead.
+      `POSTGRES_DB` in your environment **must match** the database name (`trackonedb`). On some setups add `ENCODING 'UTF8'`. If the user already exists, use `ALTER USER trackone WITH PASSWORD '…';` instead of `CREATE USER`.
 
       Type `\q` to quit `psql`.
 
-      You can do the same in **pgAdmin**: *Login/Group Roles* → create role `trackone`; *Databases* → create `trackone` owned by `trackone`.
+      In **pgAdmin**: *Login/Group Roles* → create role `trackone`; *Databases* → create database **`trackonedb`** owned by `trackone`.
 
-   3. **Set environment variables** so Django can connect. The app reads these names (defaults in `config/settings.py` are `trackone` / `trackone` / `localhost` / `5432` if unset):
+   3. **Set environment variables** so Django can connect. Names are fixed; values must match Postgres. If you omit them, `config/settings.py` defaults to database **`trackonedb`**, user **`trackone`**, password **`trackone`**, host **`localhost`**, port **`5432`**—so set at least `POSTGRES_PASSWORD` if yours is not `trackone`.
 
       | Variable | Meaning | Typical local value |
       |----------|---------|----------------------|
-      | `POSTGRES_DB` | Database name | `trackone` or `trackonedb` (must match `CREATE DATABASE`) |
+      | `POSTGRES_DB` | Database name | `trackonedb` |
       | `POSTGRES_USER` | DB user | `trackone` |
       | `POSTGRES_PASSWORD` | DB user password | *(what you chose in SQL)* |
       | `POSTGRES_HOST` | Hostname | `localhost` |
@@ -77,7 +75,7 @@ The control host is standard Django + PostgreSQL; **Windows works** the same way
       **Windows PowerShell (current window only):**
 
       ```powershell
-      $env:POSTGRES_DB = "trackone"
+      $env:POSTGRES_DB = "trackonedb"
       $env:POSTGRES_USER = "trackone"
       $env:POSTGRES_PASSWORD = "choose_a_strong_password"
       $env:POSTGRES_HOST = "localhost"
@@ -87,7 +85,7 @@ The control host is standard Django + PostgreSQL; **Windows works** the same way
       **Windows Command Prompt (current window):**
 
       ```cmd
-      set POSTGRES_DB=trackone
+      set POSTGRES_DB=trackonedb
       set POSTGRES_USER=trackone
       set POSTGRES_PASSWORD=choose_a_strong_password
       set POSTGRES_HOST=localhost
@@ -97,7 +95,7 @@ The control host is standard Django + PostgreSQL; **Windows works** the same way
       **Linux / macOS (current shell):**
 
       ```bash
-      export POSTGRES_DB=trackone
+      export POSTGRES_DB=trackonedb
       export POSTGRES_USER=trackone
       export POSTGRES_PASSWORD='choose_a_strong_password'
       export POSTGRES_HOST=localhost
@@ -108,7 +106,7 @@ The control host is standard Django + PostgreSQL; **Windows works** the same way
 
       See `control_host/env.example` for the same list plus optional Django vars.
 
-   4. **Check the connection** (optional): `psql -U trackone -d trackone -h localhost -c "SELECT 1;"` — enter the password when prompted. If this works, Django can use the same settings.
+   4. **Check the connection** (optional): `psql -U trackone -d trackonedb -h localhost -c "SELECT 1;"` — enter the password when prompted. If this works, Django can use the same settings.
 
    **B. PostgreSQL in Docker** (from repo root):
 
@@ -116,7 +114,7 @@ The control host is standard Django + PostgreSQL; **Windows works** the same way
    docker compose up -d db
    ```
 
-   Then set the same `POSTGRES_*` variables to match `docker-compose.yml` (defaults: db `trackone`, user `trackone`, password `trackone`, host `localhost`, port `5432` if you published that port).
+   `docker-compose.yml` creates database **`trackonedb`**, user **`trackone`**, password **`trackone`** by default. Point Django at it with `POSTGRES_HOST=localhost`, `POSTGRES_PORT=5432`, and the same `POSTGRES_DB` / `POSTGRES_USER` / `POSTGRES_PASSWORD` (override via shell or a `.env` file next to `docker-compose.yml` if you change defaults).
 
 2. **Configure Django** — set as needed (in the same shell as above, or persistent env):
 

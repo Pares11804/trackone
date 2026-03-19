@@ -57,7 +57,7 @@ WSGI_APPLICATION = "config.wsgi.application"
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
-        "NAME": os.environ.get("POSTGRES_DB", "trackone"),
+        "NAME": os.environ.get("POSTGRES_DB", "trackonedb"),
         "USER": os.environ.get("POSTGRES_USER", "trackone"),
         "PASSWORD": os.environ.get("POSTGRES_PASSWORD", "trackone"),
         "HOST": os.environ.get("POSTGRES_HOST", "localhost"),
