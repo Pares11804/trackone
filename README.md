@@ -56,7 +56,9 @@ The control host is standard Django + PostgreSQL; **Windows works** the same way
       CREATE DATABASE trackone OWNER trackone;
       ```
 
-      On some setups you may need `CREATE DATABASE trackone OWNER trackone ENCODING 'UTF8';`. If `CREATE USER` fails because the role exists, use `ALTER USER trackone WITH PASSWORD '…';` instead.
+      If you prefer a separate database name (e.g. `trackonedb`), use `CREATE DATABASE trackonedb OWNER trackone;` and set **`POSTGRES_DB=trackonedb`** in your environment—Django’s `POSTGRES_DB` must match that database name exactly.
+
+      On some setups you may need `CREATE DATABASE … OWNER trackone ENCODING 'UTF8';`. If `CREATE USER` fails because the role exists, use `ALTER USER trackone WITH PASSWORD '…';` instead.
 
       Type `\q` to quit `psql`.
 
@@ -66,7 +68,7 @@ The control host is standard Django + PostgreSQL; **Windows works** the same way
 
       | Variable | Meaning | Typical local value |
       |----------|---------|----------------------|
-      | `POSTGRES_DB` | Database name | `trackone` |
+      | `POSTGRES_DB` | Database name | `trackone` or `trackonedb` (must match `CREATE DATABASE`) |
       | `POSTGRES_USER` | DB user | `trackone` |
       | `POSTGRES_PASSWORD` | DB user password | *(what you chose in SQL)* |
       | `POSTGRES_HOST` | Hostname | `localhost` |
