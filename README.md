@@ -6,7 +6,7 @@ Small monitoring stack: a **control host** (Django + PostgreSQL on Linux) receiv
 
 **The story in one picture:** You have **one main computer** (the *control host*) that keeps a database of “how are my machines doing?” Each **client computer** runs a tiny background program called the **agent**. Every X seconds the agent measures CPU, RAM, and disks on *that* machine and sends the numbers over the network to the control host. So one server can watch many clients.
 
-**What is Docker (here)?** Normally you’d *install* PostgreSQL (the database) on the Linux server and configure it yourself. **Docker** is a way to run software in a **container**—think of it like a pre-packed box that already contains PostgreSQL, so you start it with one command instead of a long manual install. The file `docker-compose.yml` in this repo describes a **database box** named `db`. The command `docker compose up -d db` means: “download/start that box in the background (`-d`), and expose Postgres on a port so Django can connect.” You still need **Docker Desktop** (on Windows/Mac) or Docker Engine (on Linux) installed *on the machine where you run that command*—usually the same Linux machine that runs the control host.
+**What is Docker (here)?** Normally you’d *install* PostgreSQL (the database) on the Linux server and configure it yourself. **Docker** is a way to run software in a **container**—think of it like a pre-packed box that already contains PostgreSQL, so you start it with one command instead of a long manual install. The file `docker-compose.yml` in this repo describes a **database box** named `db`. The command `docker compose up -d db` means: “download/start that box in the background (`-d`), and expose Postgres on a port so Django can connect.” You still need **Docker Desktop** (on Windows/Mac) or Docker Engine (on Linux) installed *on the machine where you run that command*—often the same machine that runs the control host.
 
 **Parts of this repo:**
 
@@ -32,7 +32,9 @@ Small monitoring stack: a **control host** (Django + PostgreSQL on Linux) receiv
 
 **Production:** Use a real WSGI/ASGI server (e.g. Gunicorn/Uvicorn) behind a reverse proxy, not `runserver`. Over long periods, plan **retention** (prune or archive old `MetricIngest` rows) so the table does not grow without bound.
 
-## Control host (Linux)
+## Control host (Linux or Windows)
+
+The control host is standard Django + PostgreSQL; **Windows works** the same way as Linux for development and many deployments. Install PostgreSQL natively or run `docker compose up -d db` with **Docker Desktop**. Use a Windows venv (`python -m venv .venv` then `.\.venv\Scripts\Activate.ps1`). For production on Windows, use a Windows-friendly app server (e.g. **Waitress**) or run the app under **WSL2** if you prefer Linux-style Gunicorn/nginx.
 
 1. **PostgreSQL** — use your own server or Docker:
 
