@@ -36,17 +36,90 @@ Small monitoring stack: a **control host** (Django + PostgreSQL on Linux) receiv
 
 The control host is standard Django + PostgreSQL; **Windows works** the same way as Linux for development and many deployments. Install PostgreSQL natively or run `docker compose up -d db` with **Docker Desktop**. Use a Windows venv (`python -m venv .venv` then `.\.venv\Scripts\Activate.ps1`). For production on Windows, use a Windows-friendly app server (e.g. **Waitress**) or run the app under **WSL2** if you prefer Linux-style Gunicorn/nginx.
 
-1. **PostgreSQL** — use your own server or Docker:
+1. **PostgreSQL** — pick one:
+
+   **A. Local PostgreSQL (already installed on this machine)**
+
+   1. Make sure the **PostgreSQL service is running** (Windows: *Services* → *postgresql*…; Linux: `sudo systemctl status postgresql`).
+   2. Open a shell as a superuser and create a database user and database (names below match the project defaults; change the password).
+
+      Using **`psql`** (adjust `-U` if your superuser is not `postgres`):
+
+      ```bash
+      psql -U postgres
+      ```
+
+      Then run:
+
+      ```sql
+      CREATE USER trackone WITH PASSWORD 'choose_a_strong_password';
+      CREATE DATABASE trackone OWNER trackone;
+      ```
+
+      On some setups you may need `CREATE DATABASE trackone OWNER trackone ENCODING 'UTF8';`. If `CREATE USER` fails because the role exists, use `ALTER USER trackone WITH PASSWORD '…';` instead.
+
+      Type `\q` to quit `psql`.
+
+      You can do the same in **pgAdmin**: *Login/Group Roles* → create role `trackone`; *Databases* → create `trackone` owned by `trackone`.
+
+   3. **Set environment variables** so Django can connect. The app reads these names (defaults in `config/settings.py` are `trackone` / `trackone` / `localhost` / `5432` if unset):
+
+      | Variable | Meaning | Typical local value |
+      |----------|---------|----------------------|
+      | `POSTGRES_DB` | Database name | `trackone` |
+      | `POSTGRES_USER` | DB user | `trackone` |
+      | `POSTGRES_PASSWORD` | DB user password | *(what you chose in SQL)* |
+      | `POSTGRES_HOST` | Hostname | `localhost` |
+      | `POSTGRES_PORT` | Port | `5432` |
+
+      **Windows PowerShell (current window only):**
+
+      ```powershell
+      $env:POSTGRES_DB = "trackone"
+      $env:POSTGRES_USER = "trackone"
+      $env:POSTGRES_PASSWORD = "choose_a_strong_password"
+      $env:POSTGRES_HOST = "localhost"
+      $env:POSTGRES_PORT = "5432"
+      ```
+
+      **Windows Command Prompt (current window):**
+
+      ```cmd
+      set POSTGRES_DB=trackone
+      set POSTGRES_USER=trackone
+      set POSTGRES_PASSWORD=choose_a_strong_password
+      set POSTGRES_HOST=localhost
+      set POSTGRES_PORT=5432
+      ```
+
+      **Linux / macOS (current shell):**
+
+      ```bash
+      export POSTGRES_DB=trackone
+      export POSTGRES_USER=trackone
+      export POSTGRES_PASSWORD='choose_a_strong_password'
+      export POSTGRES_HOST=localhost
+      export POSTGRES_PORT=5432
+      ```
+
+      To make variables **persistent on Windows**, use *Settings → System → About → Advanced system settings → Environment variables* (user or system), or `setx POSTGRES_PASSWORD "..."` (note: `setx` does not affect the already-open terminal).
+
+      See `control_host/env.example` for the same list plus optional Django vars.
+
+   4. **Check the connection** (optional): `psql -U trackone -d trackone -h localhost -c "SELECT 1;"` — enter the password when prompted. If this works, Django can use the same settings.
+
+   **B. PostgreSQL in Docker** (from repo root):
 
    ```bash
    docker compose up -d db
    ```
 
-2. **Configure** — set env vars (or export in shell):
+   Then set the same `POSTGRES_*` variables to match `docker-compose.yml` (defaults: db `trackone`, user `trackone`, password `trackone`, host `localhost`, port `5432` if you published that port).
 
-   - `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_HOST`, `POSTGRES_PORT`
-   - `DJANGO_SECRET_KEY` (production)
-   - `DJANGO_DEBUG=0`, `DJANGO_ALLOWED_HOSTS=your.host`
+2. **Configure Django** — set as needed (in the same shell as above, or persistent env):
+
+   - `DJANGO_SECRET_KEY` — required for production (any long random string).
+   - `DJANGO_DEBUG=0` and `DJANGO_ALLOWED_HOSTS=your.hostname,127.0.0.1` in production.
 
 3. **Install and migrate**
 
