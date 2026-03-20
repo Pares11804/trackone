@@ -6,7 +6,7 @@ Small monitoring stack: a **control host** (Django + PostgreSQL) receives period
 
 **The story in one picture:** You have **one main computer** (the *control host*) that keeps a database of “how are my machines doing?” Each **client computer** runs **trackoneagent** (the TrackOne client). Every X seconds it measures CPU, RAM, and disks on *that* machine and sends the numbers over the network to the control host. So one server can watch many clients.
 
-**What is Docker (here)?** Normally you’d *install* PostgreSQL (the database) on the Linux server and configure it yourself. **Docker** is a way to run software in a **container**—think of it like a pre-packed box that already contains PostgreSQL, so you start it with one command instead of a long manual install. The file `docker-compose.yml` in this repo describes a **database box** named `db`. The command `docker compose up -d db` means: “download/start that box in the background (`-d`), and expose Postgres on a port so Django can connect.” You still need **Docker Desktop** (on Windows/Mac) or Docker Engine (on Linux) installed *on the machine where you run that command*—often the same machine that runs the control host.
+**What is Docker / Podman (here)?** This README assumes the **control host** uses **PostgreSQL installed on the server** (packages or your DBA standard)—**not** Postgres inside a container. **Docker** or **Podman** is optional **only on client machines** if you want to run **trackoneagent** from an image instead of a Python venv. The file **`docker-compose.trackoneagent.yml`** (plus **`trackoneagent/Dockerfile`**) describes that **agent** container. You need **Docker Desktop** (Windows/Mac), **Docker Engine**, or **Podman** *on each client where you choose the container path*—**not** on the control host for the database.
 
 **Parts of this repo:**
 
@@ -44,7 +44,7 @@ End-to-end steps for a **fresh Linux server** (SSH session, first-time install).
 | Requirement | Why |
 |-------------|-----|
 | **Python 3.10+** | `control_host/requirements.txt` pins **Django 5.x**; older system Pythons cannot install it. Check: `python3 --version`. If too old, install a newer runtime (distro packages, [pyenv](https://github.com/pyenv/pyenv), or your org’s standard Python). |
-| **PostgreSQL** | Either **Docker** (`docker compose` in this repo) or **native** packages on the same host (or a reachable DB elsewhere). |
+| **PostgreSQL** | **Native** on the control host (distro packages or PGDG) or any **reachable** PostgreSQL instance — **not** covered here as a container on the control host. |
 | **Network** | Agents need HTTP access to the control URL; open the app port in **firewalld** / **ufw** / cloud security groups if you connect from other machines. |
 
 ### 1. Get the code
@@ -54,21 +54,9 @@ git clone <YOUR_REPO_URL> trackone
 cd trackone
 ```
 
-### 2. PostgreSQL — pick one path
+### 2. PostgreSQL on the control host (native)
 
-**A. PostgreSQL in Docker** (good when Docker Engine is already installed)
-
-From the **repo root** (folder that contains `docker-compose.yml`):
-
-```bash
-export POSTGRES_PASSWORD='choose_a_strong_password'
-docker compose up -d db
-# RHEL / Oracle Linux with Podman (if docker compose is missing): podman-compose up -d db
-```
-
-This uses the defaults in `docker-compose.yml`: database **`trackonedb`**, user **`trackone`**, port **5432** on the host. Use the **same** password in `control_host/.env` (step 4). For **Podman** and **`podman-compose`**, see [Podman on RHEL and Oracle Linux](#podman-on-rhel-and-oracle-linux).
-
-**B. Native PostgreSQL** (no container)
+Install and run **PostgreSQL on the same Linux machine as Django** (or point `.env` at a remote Postgres your org provides). **Do not rely on Docker/Podman for the database** in this guide.
 
 - **Debian / Ubuntu:** install `postgresql`, start the service (`sudo systemctl start postgresql`), then `sudo -u postgres psql` and run:
 
@@ -101,7 +89,7 @@ cp env.example .env
 
 Edit **`.env`**:
 
-- **`POSTGRES_PASSWORD`** — must match the **`trackone`** database password (Docker or native).
+- **`POSTGRES_PASSWORD`** — must match the **`trackone`** database password you set in PostgreSQL.
 - **`DJANGO_ALLOWED_HOSTS`** — comma-separated; include every hostname or IP you use in the browser or from agents, e.g. `localhost,127.0.0.1,10.0.0.5,app.example.com`. Omitting this on a LAN IP often causes **DisallowedHost** after the connection works.
 - **`DJANGO_DEBUG=1`** is fine for local dev; use **`DJANGO_DEBUG=0`** and a strong **`DJANGO_SECRET_KEY`** toward production.
 
@@ -188,11 +176,11 @@ Install or bundle **trackoneagent** on each monitored machine; see [trackoneagen
 
 The control host is standard Django + PostgreSQL; **Windows works** the same way as Linux for development and many deployments.
 
-**Oracle Linux VM (e.g. login `oracle@nyvm741`):** step-by-step install, PostgreSQL, firewall, and `runserver 0.0.0.0:8000` — see **[docs/deploy-control-host-oracle-linux-vm.md](docs/deploy-control-host-oracle-linux-vm.md)**. (*“Oracle” here is the Linux user/OS; the app still uses **PostgreSQL**, not Oracle Database, unless you customize Django yourself.*) Install PostgreSQL natively or run `docker compose up -d db` with **Docker Desktop**. Use a Windows venv (`python -m venv .venv` then `.\.venv\Scripts\Activate.ps1`). For production on Windows, use a Windows-friendly app server (e.g. **Waitress**) or run the app under **WSL2** if you prefer Linux-style Gunicorn/nginx.
+**Oracle Linux VM (e.g. login `oracle@nyvm741`):** step-by-step install, **native** PostgreSQL, firewall, and `runserver 0.0.0.0:8000` — see **[docs/deploy-control-host-oracle-linux-vm.md](docs/deploy-control-host-oracle-linux-vm.md)**. (*“Oracle” here is the Linux user/OS; the app still uses **PostgreSQL**, not Oracle Database, unless you customize Django yourself.*) On Windows, install PostgreSQL natively (installer or your IT standard). Use a Windows venv (`python -m venv .venv` then `.\.venv\Scripts\Activate.ps1`). For production on Windows, use a Windows-friendly app server (e.g. **Waitress**) or run the app under **WSL2** if you prefer Linux-style Gunicorn/nginx.
 
-1. **PostgreSQL** — pick one:
+1. **PostgreSQL (native on the control host)**
 
-   **A. Local PostgreSQL (already installed on this machine)**
+   **Install local PostgreSQL (already on this machine or install it first)**
 
    1. Make sure the **PostgreSQL service is running** (Windows: *Services* → *postgresql*…; Linux: `sudo systemctl status postgresql`).
    2. Open a shell as a superuser and create a database user and database. This project uses database name **`trackonedb`** and role **`trackone`** (change the password to something strong).
@@ -276,17 +264,6 @@ The control host is standard Django + PostgreSQL; **Windows works** the same way
       See `control_host/env.example` for the full list (copy to `control_host/.env`). File `.env` is gitignored.
 
    4. **Check the connection** (optional): `psql -U trackone -d trackonedb -h localhost -c "SELECT 1;"` — enter the password when prompted. If this works, Django can use the same settings.
-
-   **B. PostgreSQL in Docker** — run on the **control host**, from the **TrackOne repo root** (the folder that contains `docker-compose.yml`):
-
-   ```bash
-   docker compose up -d db
-   ```
-
-   On **RHEL / Oracle Linux**, `docker` is often **Podman**; if **`docker compose`** is missing, use **`podman-compose`** (see [Podman on RHEL / Oracle Linux](#podman-on-rhel-and-oracle-linux)):  
-   `podman-compose up -d db` from the same directory.
-
-   `docker-compose.yml` creates database **`trackonedb`**, user **`trackone`**, password **`trackone`** by default. Point Django at it with `POSTGRES_HOST=localhost`, `POSTGRES_PORT=5432`, and the same `POSTGRES_DB` / `POSTGRES_USER` / `POSTGRES_PASSWORD` (override via shell or a `.env` file next to `docker-compose.yml` if you change defaults).
 
 2. **Configure Django** — set as needed (in the same shell as above, or persistent env):
 
@@ -394,15 +371,14 @@ After the page loads, if you see **DisallowedHost**, add the hostname or IP to *
 
 The control host command removes hand-editing of tokens and URLs; it does **not** remove the need for a Python runtime **unless** you use Docker (or a frozen binary).
 
-### Which machine do I use for Docker commands? (control host vs client)
+### Which machine do I use for Docker / Podman commands? (control host vs client)
 
 | What you are doing | Run the command **on this machine** | Typical folder (current working directory) |
 |--------------------|--------------------------------------|--------------------------------------------|
-| **`docker compose up -d db`** using the root **`docker-compose.yml`** (PostgreSQL only) | **Control host** — the server where Django and the database live | **TrackOne repo root** (the directory that contains `docker-compose.yml`) |
-| **`docker build` / `docker compose -f docker-compose.trackoneagent.yml …`** (TrackOne **agent** image) | **Client** — each machine you want to **monitor** | **TrackOne repo root** on *that* client (must contain `trackoneagent/`, `monitoring_scripts/`, and the Dockerfile paths). *Alternatively:* build the image once on any PC, **`docker push`** to a registry, then on each client only **`docker pull`** + **`docker run`** (no full repo needed). |
-| **Docker Desktop / Engine installed** | Install Docker on **both** if you use Docker for Postgres on the control host **and** Docker for the agent on clients — they are separate machines. | — |
+| **`docker build` / `docker compose` / `podman-compose` with `docker-compose.trackoneagent.yml`** (TrackOne **agent** image) | **Client** — each machine you want to **monitor** | **TrackOne repo root** on *that* client (must contain `trackoneagent/`, `monitoring_scripts/`, and the Dockerfile paths). *Alternatively:* build the image once on any PC, **`docker push`** to a registry, then on each client only **`docker pull`** + **`docker run`** (no full repo needed). |
+| **Docker Desktop / Engine / Podman** | Install on **clients** that will run the **agent** in a container. The **control host** does **not** need containers for PostgreSQL in this guide — use **native Postgres** there. | — |
 
-**Rule of thumb:** anything that runs **trackoneagent** (sending metrics **to** the control server) uses Docker commands on the **client**. Anything that runs **only PostgreSQL** for Django uses the root `docker compose` on the **control host**.
+**Rule of thumb:** **PostgreSQL** runs **natively** on the **control host** (or is a managed DB elsewhere). **Docker / Podman** is only for **trackoneagent** on **client** machines that use the container path.
 
 You would run the agent container **on the control host** only if you intentionally want that same server to appear as one monitored host — not required for a normal setup.
 
@@ -421,7 +397,7 @@ Think of it like a **self-contained lunchbox**: the recipe is the **Dockerfile**
 | **Image** | A **read-only template** built from a Dockerfile (like a snapshot). Named with a tag, e.g. `trackone-agent:latest`. |
 | **Container** | A **running** (or stopped) instance of an image. You can run many containers from one image. |
 | **Registry** | A place that **stores images** (e.g. Docker Hub, GitHub Container Registry). You `docker push` after build, others `docker pull`. |
-| **Docker Compose** | A tool that reads a **YAML file** (our **`docker-compose.trackoneagent.yml`**) and can **build, configure, and start** one or more containers with one command. |
+| **Docker Compose** | A tool that reads a **YAML file**. For TrackOne, **`docker-compose.trackoneagent.yml`** builds and starts the **agent** container. (A root **`docker-compose.yml`** file may exist in the repo for other experiments; **this README assumes native PostgreSQL** on the control host, not Postgres in Docker.) |
 
 **Install Docker**
 
@@ -507,7 +483,7 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-  A["You: docker compose up"] --> B{Compose provider on PATH or plugin dir?}
+  A["You: docker compose up (agent stack)"] --> B{Compose provider on PATH or plugin dir?}
   B -->|yes| C[Compose runs]
   B -->|no| D["Error: looking up compose provider failed"]
   D --> E["Fix: install podman-compose (dnf / pip)"]
@@ -522,13 +498,10 @@ flowchart TD
 | **`docker compose` fails** | Podman’s shim looks for a **Compose provider** (`docker-compose` binary, a CLI plugin, or **`podman-compose`**). If you see **“looking up compose provider failed”**, install **`podman-compose`** and call it explicitly (hyphenated name). |
 | **Install `podman-compose`** | Try **`sudo dnf install podman-compose`** (or **`yum`**). If the package is missing, enable **EPEL** on RHEL 8–style systems, then install again. Alternative: **`python3 -m pip install --user podman-compose`** and ensure **`~/.local/bin`** is on **`PATH`**. |
 
-From the **TrackOne repo root**, use the same **`-f`** / **`--env-file`** flags as in the **`docker compose`** examples, but run **`podman-compose`** (hyphenated):
+From the **TrackOne repo root** on a **client**, use the same **`-f`** / **`--env-file`** flags as in the **`docker compose`** examples, but run **`podman-compose`** (hyphenated):
 
 ```bash
-# PostgreSQL only (control host)
-podman-compose up -d db
-
-# TrackOne agent (client)
+# TrackOne agent (client machine)
 podman-compose -f docker-compose.trackoneagent.yml --env-file agent.docker.env up -d --build
 ```
 
