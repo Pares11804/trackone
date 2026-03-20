@@ -1,1 +1,7 @@
+PS C:\PVMEHTA\Github\Pares11804\trackone\control_host> python manage.py create_monitored_host dm04dbadm02
+Created monitored host "dm04dbadm02".
+Configure trackoneagent with this token (shown once):
+-Re8Xm5golBRDMlku3Zfkk60A7Y-UBsmfmo11JJfi6k
+
+
 
