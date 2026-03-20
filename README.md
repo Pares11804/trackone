@@ -16,6 +16,7 @@ Small monitoring stack: a **control host** (Django + PostgreSQL) receives period
 | `trackoneagent/` | The **TrackOne client program** you run on each machine you want to monitor |
 | `monitoring_scripts/` | Shared **measuring tools** (CPU/RAM/disk) that **trackoneagent** calls |
 | [Runbook: Linux control host](#runbook-control-host-on-linux-new-machine) | **Step-by-step** deploy on a new Linux server (PostgreSQL, `.env`, Python venv, migrate, `runserver`, firewall) |
+| [Git troubleshooting (`pull`)](#git-divergent-branches-on-pull) | **Divergent branches** / **local changes would be overwritten by merge** — what they mean and how to fix |
 
 **What the client machine needs installed** is spelled out in [trackoneagent — what to install on the client](#trackoneagent--what-to-install-on-the-client) below.
 
@@ -715,3 +716,85 @@ Rows appear in Django admin as **Metric ingests**; **Monitored hosts** shows `la
 ## Adding more metrics later
 
 Add a new module under `monitoring_scripts/` (e.g. `network.py` with `collect_network()`), export it from `monitoring_scripts/__init__.py`, and extend `collect_payload()` in `trackoneagent/main.py`. The control host stores the full `metrics` object as JSON, so no schema migration is required for new keys.
+
+## Git: divergent branches on `pull`
+
+### What the error means
+
+When you run `git pull origin main` (or `git pull --tags origin main`), Git **fetches** new commits from GitHub, then must **combine** them with your local `main`.
+
+**Divergent branches** means:
+
+- **GitHub’s `main`** has commit(s) you do **not** have locally (someone else pushed, or you pushed from another machine), **and**
+- **Your local `main`** has commit(s) that are **not** on GitHub (e.g. README edits, deploy notes, commits you never pushed).
+
+So the histories **forked**. A simple **fast-forward** is impossible: Git has to either **merge** the two lines of history or **rebase** your work on top of the remote.
+
+Recent Git versions **refuse to guess**: they exit with **`fatal: Need to specify how to reconcile divergent branches`** until you pick a strategy (once per repo via config, or per command with flags).
+
+### What you can do
+
+Pick **one** approach and stick to it for this clone (or set it **globally** with `git config --global …`).
+
+| Approach | Command (one-time pull) | Effect |
+|----------|-------------------------|--------|
+| **Merge** (default style on many teams) | `git pull --no-rebase origin main` | Creates a **merge commit** joining remote and local `main`. Safe and obvious in history. |
+| **Rebase** (linear history) | `git pull --rebase origin main` | Replays **your** local commits **on top of** `origin/main`. No merge commit; rewrites local commit hashes (fine if you haven’t shared those commits elsewhere). |
+| **Fast-forward only** | `git pull --ff-only origin main` | **Succeeds only** if your branch can move forward without merging. **Fails** when branches diverged — use when you want to force yourself to rebase/merge manually. |
+
+To **set a default** for this repository so plain `git pull` works:
+
+```bash
+git config pull.rebase false   # merge when pulling (common default)
+# or
+git config pull.rebase true    # rebase when pulling
+# or
+git config pull.ff only        # only fast-forward; otherwise error until you merge/rebase yourself
+```
+
+After resolving, run `git push origin main` when you are ready to publish your side.
+
+### If you are unsure
+
+Use **`git pull --no-rebase origin main`**, fix any merge conflicts if Git reports them, then commit and push. That matches how many projects expect contributors to integrate `main`.
+
+### “Local changes would be overwritten by merge”
+
+Example:
+
+```text
+error: Your local changes to the following files would be overwritten by merge:
+        README.md
+Please commit your changes or stash them before you merge.
+```
+
+**Meaning:** You have **uncommitted edits** in your working tree (here `README.md`). The incoming merge would change that file; Git refuses to overwrite your edits without you saving them somewhere first.
+
+**Fix — keep your edits:** from the **repository root** (the folder that contains `.git` and `README.md`, not only `control_host/`):
+
+```bash
+git add README.md
+git commit -m "Describe your README change"
+git pull --no-rebase origin main
+```
+
+**Fix — shelve edits, pull, then re-apply:**
+
+```bash
+git stash push -m "wip" -- README.md
+git pull --no-rebase origin main
+git stash pop
+```
+
+(Then resolve conflicts if `stash pop` reports any, and commit.)
+
+**Fix — discard local changes to that file** (only if you do not need them):
+
+```bash
+git restore README.md
+git pull --no-rebase origin main
+```
+
+### See also
+
+- Official docs: [git pull](https://git-scm.com/docs/git-pull) and [branching workflows](https://git-scm.com/book/en/v2/Git-Branching-Branching-Workflows).
