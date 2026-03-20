@@ -62,7 +62,9 @@ The control host is standard Django + PostgreSQL; **Windows works** the same way
 
       In **pgAdmin**: *Login/Group Roles* → create role `trackone`; *Databases* → create database **`trackonedb`** owned by `trackone`.
 
-   3. **Set environment variables** so Django can connect. Names are fixed; values must match Postgres. If you omit them, `config/settings.py` defaults to database **`trackonedb`**, user **`trackone`**, password **`trackone`**, host **`localhost`**, port **`5432`**—so set at least `POSTGRES_PASSWORD` if yours is not `trackone`.
+   3. **Configure Django’s database connection** — easiest: create **`control_host/.env`** (same folder as `manage.py`). Copy `control_host/env.example` to `.env` and edit values. **`settings.py` loads `.env` automatically** via `python-dotenv` on startup. If a variable is missing from `.env`, the defaults in `settings.py` apply (`trackonedb` / `trackone` / `trackone` / `localhost` / `5432`)—set at least `POSTGRES_PASSWORD` if yours is not `trackone`.
+
+      Alternatively set the same names in your shell or OS environment (they override `.env` if already set in the environment, depending on `load_dotenv` behavior — by default **existing OS env vars are not overwritten**).
 
       | Variable | Meaning | Typical local value |
       |----------|---------|----------------------|
@@ -104,7 +106,7 @@ The control host is standard Django + PostgreSQL; **Windows works** the same way
 
       To make variables **persistent on Windows**, use *Settings → System → About → Advanced system settings → Environment variables* (user or system), or `setx POSTGRES_PASSWORD "..."` (note: `setx` does not affect the already-open terminal).
 
-      See `control_host/env.example` for the same list plus optional Django vars.
+      See `control_host/env.example` for the full list (copy to `control_host/.env`). File `.env` is gitignored.
 
    4. **Check the connection** (optional): `psql -U trackone -d trackonedb -h localhost -c "SELECT 1;"` — enter the password when prompted. If this works, Django can use the same settings.
 
