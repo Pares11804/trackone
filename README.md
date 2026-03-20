@@ -17,6 +17,7 @@ Small monitoring stack: a **control host** (Django + PostgreSQL) receives period
 | `monitoring_scripts/` | Shared **measuring tools** (CPU/RAM/disk) that **trackoneagent** calls |
 | [Runbook: Linux control host](#runbook-control-host-on-linux-new-machine) | **Step-by-step** deploy on a new Linux server (PostgreSQL, `.env`, Python venv, migrate, `runserver`, firewall) |
 | [Git troubleshooting (`pull`)](#git-divergent-branches-on-pull) | **Divergent branches** / **local changes would be overwritten by merge** — what they mean and how to fix |
+| [Podman on RHEL / Oracle Linux](#podman-on-rhel-and-oracle-linux) | **`docker` = Podman**, **`docker compose` fails**, **subuid** / **podman-compose** — basics for locked-down or RH-family hosts |
 
 **What the client machine needs installed** is spelled out in [trackoneagent — what to install on the client](#trackoneagent--what-to-install-on-the-client) below.
 
@@ -62,9 +63,10 @@ From the **repo root** (folder that contains `docker-compose.yml`):
 ```bash
 export POSTGRES_PASSWORD='choose_a_strong_password'
 docker compose up -d db
+# RHEL / Oracle Linux with Podman (if docker compose is missing): podman-compose up -d db
 ```
 
-This uses the defaults in `docker-compose.yml`: database **`trackonedb`**, user **`trackone`**, port **5432** on the host. Use the **same** password in `control_host/.env` (step 4).
+This uses the defaults in `docker-compose.yml`: database **`trackonedb`**, user **`trackone`**, port **5432** on the host. Use the **same** password in `control_host/.env` (step 4). For **Podman** and **`podman-compose`**, see [Podman on RHEL and Oracle Linux](#podman-on-rhel-and-oracle-linux).
 
 **B. Native PostgreSQL** (no container)
 
@@ -281,6 +283,9 @@ The control host is standard Django + PostgreSQL; **Windows works** the same way
    docker compose up -d db
    ```
 
+   On **RHEL / Oracle Linux**, `docker` is often **Podman**; if **`docker compose`** is missing, use **`podman-compose`** (see [Podman on RHEL / Oracle Linux](#podman-on-rhel-and-oracle-linux)):  
+   `podman-compose up -d db` from the same directory.
+
    `docker-compose.yml` creates database **`trackonedb`**, user **`trackone`**, password **`trackone`** by default. Point Django at it with `POSTGRES_HOST=localhost`, `POSTGRES_PORT=5432`, and the same `POSTGRES_DB` / `POSTGRES_USER` / `POSTGRES_PASSWORD` (override via shell or a `.env` file next to `docker-compose.yml` if you change defaults).
 
 2. **Configure Django** — set as needed (in the same shell as above, or persistent env):
@@ -384,7 +389,7 @@ After the page loads, if you see **DisallowedHost**, add the hostname or IP to *
 |----------|----------------|
 | Normal / portable folder + `setup_*.bat` | **Python** once (creates `.venv` in the folder — no system-wide pip mess). |
 | **`build_trackoneagent_bundle`** | Same: copy folder, run setup once; **no manual token/URL typing** — `config.env` is pre-filled. |
-| **Docker** (below) | **Docker Engine** (or Docker Desktop) only — **no Python or pip on the host**. |
+| **Docker / Podman** (below) | **Docker Engine**, **Docker Desktop**, or **Podman** (typical on RHEL / OL) with a **Compose** tool — **no Python or pip on the host** for the agent image. |
 | Truly **no** Python *and* no Docker | Ship a **frozen `.exe`** (e.g. PyInstaller) or **embeddable Python** inside a folder. |
 
 The control host command removes hand-editing of tokens and URLs; it does **not** remove the need for a Python runtime **unless** you use Docker (or a frozen binary).
@@ -421,7 +426,7 @@ Think of it like a **self-contained lunchbox**: the recipe is the **Dockerfile**
 **Install Docker**
 
 - **Windows / Mac:** install **[Docker Desktop](https://www.docker.com/products/docker-desktop/)** (it includes the `docker` and `docker compose` commands). After install, reboot if asked; ensure Docker Desktop is **running** (whale icon in the tray).
-- **Linux:** install **Docker Engine** from your distribution’s docs (e.g. Ubuntu: Docker’s official “Install Docker Engine” page).
+- **Linux:** install **Docker Engine** from your distribution’s docs (e.g. Ubuntu: Docker’s official “Install Docker Engine” page). On **RHEL / Oracle Linux / Rocky**, **Podman** is common; the `docker` command may be a **compatibility shim** — see [Podman on RHEL / Oracle Linux](#podman-on-rhel-and-oracle-linux).
 
 Open a terminal (PowerShell, cmd, or bash) and check:
 
@@ -465,6 +470,73 @@ docker compose -f docker-compose.trackoneagent.yml logs -f
 docker compose -f docker-compose.trackoneagent.yml down
 ```
 
+### Podman on RHEL and Oracle Linux
+
+On many **Red Hat–family** servers, **`docker`** is not Docker Engine — it runs **Podman** and may print:
+
+```text
+Emulate Docker CLI using podman. Create /etc/containers/nodocker to quiet msg.
+```
+
+That is **normal**. To hide only that notice (optional):  
+`sudo touch /etc/containers/nodocker`
+
+#### Diagrams — how this differs from “real” Docker
+
+**Typical Docker Engine (Docker Desktop, many Ubuntu installs):** one CLI talks to a **daemon** that runs containers.
+
+```mermaid
+flowchart LR
+  subgraph engine["Docker Engine setup"]
+    CLI1[docker CLI] --> DAEMON[dockerd daemon]
+    DAEMON --> CTR1[Containers]
+  end
+```
+
+**Many RHEL / Oracle Linux hosts:** the **`docker`** command is a **compatibility shim**; **Podman** runs containers (often **rootless**, no `dockerd`).
+
+```mermaid
+flowchart LR
+  subgraph podman["Podman setup — same commands, different engine"]
+    CLI2["docker CLI (shim)"] --> POD[Podman]
+    POD --> CTR2[Containers]
+  end
+```
+
+**Why `docker compose` breaks but `docker run` often works:** the shim must find a **Compose implementation**. If none is installed, you install **`podman-compose`** and call it by name.
+
+```mermaid
+flowchart TD
+  A["You: docker compose up"] --> B{Compose provider on PATH or plugin dir?}
+  B -->|yes| C[Compose runs]
+  B -->|no| D["Error: looking up compose provider failed"]
+  D --> E["Fix: install podman-compose (dnf / pip)"]
+  E --> F["Run: podman-compose up … same -f YAML"]
+```
+
+**Guidelines**
+
+| Topic | What to know |
+|--------|----------------|
+| **Images / runs** | Most **`docker build`**, **`docker run`**, **`docker ps`** usage maps to **Podman** the same way when the shim is installed. |
+| **`docker compose` fails** | Podman’s shim looks for a **Compose provider** (`docker-compose` binary, a CLI plugin, or **`podman-compose`**). If you see **“looking up compose provider failed”**, install **`podman-compose`** and call it explicitly (hyphenated name). |
+| **Install `podman-compose`** | Try **`sudo dnf install podman-compose`** (or **`yum`**). If the package is missing, enable **EPEL** on RHEL 8–style systems, then install again. Alternative: **`python3 -m pip install --user podman-compose`** and ensure **`~/.local/bin`** is on **`PATH`**. |
+
+From the **TrackOne repo root**, use the same **`-f`** / **`--env-file`** flags as in the **`docker compose`** examples, but run **`podman-compose`** (hyphenated):
+
+```bash
+# PostgreSQL only (control host)
+podman-compose up -d db
+
+# TrackOne agent (client)
+podman-compose -f docker-compose.trackoneagent.yml --env-file agent.docker.env up -d --build
+```
+
+| Topic | What to know |
+|--------|----------------|
+| **Rootless / `subuid`** | If **`docker version`** or **`podman info`** reports **no subuid ranges** for your user (common for service accounts like **`oracle`**), **rootless** containers may fail or warn. A **Linux admin** should assign non-overlapping ranges in **`/etc/subuid`** and **`/etc/subgid`** (see **`man subuid`** / your OS hardening guide). Until then, prefer **venv + Python** for the agent, or **rootful** Podman only if your policy allows it. |
+| **Locked-down hosts** | If container tooling is blocked or brittle on **database servers**, use the **non-Docker** trackoneagent path (**venv** + Python **3.10+** alongside system Python). |
+
 **Why not `http://localhost:8000` inside the container?**  
 Inside a container, **`localhost` means “this container,”** not your PC. To reach the TrackOne **control host** on another machine, use that machine’s **IP or hostname**. If the control host runs **on the same Windows/Mac as Docker Desktop**, try **`http://host.docker.internal:8000`** so the container can reach the host.
 
@@ -476,13 +548,15 @@ Inside a container, **`localhost` means “this container,”** not your PC. To 
 
 The repo includes **`trackoneagent/Dockerfile`** and **`docker-compose.trackoneagent.yml`**. The image bundles Python, `psutil`, `requests`, and the agent code — you only configure URL/token and start the container.
 
-1. On the **client**, with **Docker** installed, open a terminal in the **TrackOne repository root** (needs `trackoneagent/`, `monitoring_scripts/`, Dockerfile paths):
+1. On the **client**, with **Docker** or **Podman** installed, open a terminal in the **TrackOne repository root** (needs `trackoneagent/`, `monitoring_scripts/`, Dockerfile paths):
 
    ```bash
    cp trackoneagent/docker.env.example agent.docker.env
    # Edit agent.docker.env: TRACKONE_CONTROL_URL, TRACKONE_API_TOKEN
    docker compose -f docker-compose.trackoneagent.yml --env-file agent.docker.env up -d --build
    ```
+
+   On **Podman-only** hosts where **`docker compose`** fails, use **`podman-compose`** with the same **`-f`** and **`--env-file`** (see [Podman on RHEL and Oracle Linux](#podman-on-rhel-and-oracle-linux)).
 
 2. Or **build once** (on the **client** or on a **build PC**), then run the image on **each client**:
 
