@@ -15,6 +15,7 @@ Small monitoring stack: a **control host** (Django + PostgreSQL) receives period
 | `control_host/` | The **server app**: web API + admin website + talks to Postgres |
 | `trackoneagent/` | The **TrackOne client program** you run on each machine you want to monitor |
 | `monitoring_scripts/` | Shared **measuring tools** (CPU/RAM/disk) that **trackoneagent** calls |
+| [Runbook: Linux control host](#runbook-control-host-on-linux-new-machine) | **Step-by-step** deploy on a new Linux server (PostgreSQL, `.env`, Python venv, migrate, `runserver`, firewall) |
 
 **What the client machine needs installed** is spelled out in [trackoneagent — what to install on the client](#trackoneagent--what-to-install-on-the-client) below.
 
@@ -31,6 +32,141 @@ Small monitoring stack: a **control host** (Django + PostgreSQL) receives period
 **Yes.** The model is agent-initiated HTTP POSTs on an interval (e.g. every 30s). Tens of hosts means on the order of tens of requests per interval spread over time—trivial for Django + PostgreSQL. Roughly: \(N\) hosts × (3600 / interval_seconds) ingests per hour; example: 50 hosts @ 30s ≈ 6k rows/hour into `MetricIngest`, which Postgres handles easily with the existing indexes.
 
 **Production:** Use a real WSGI/ASGI server (e.g. Gunicorn/Uvicorn) behind a reverse proxy, not `runserver`. Over long periods, plan **retention** (prune or archive old `MetricIngest` rows) so the table does not grow without bound.
+
+## Runbook: control host on Linux (new machine)
+
+End-to-end steps for a **fresh Linux server** (SSH session, first-time install). For Windows nuances and deeper troubleshooting (including **connection refused** and **DisallowedHost**), see [Control host (Linux or Windows)](#control-host-linux-or-windows) — especially the **Troubleshooting** subsection near the end of that section.
+
+### 0. Prerequisites
+
+| Requirement | Why |
+|-------------|-----|
+| **Python 3.10+** | `control_host/requirements.txt` pins **Django 5.x**; older system Pythons cannot install it. Check: `python3 --version`. If too old, install a newer runtime (distro packages, [pyenv](https://github.com/pyenv/pyenv), or your org’s standard Python). |
+| **PostgreSQL** | Either **Docker** (`docker compose` in this repo) or **native** packages on the same host (or a reachable DB elsewhere). |
+| **Network** | Agents need HTTP access to the control URL; open the app port in **firewalld** / **ufw** / cloud security groups if you connect from other machines. |
+
+### 1. Get the code
+
+```bash
+git clone <YOUR_REPO_URL> trackone
+cd trackone
+```
+
+### 2. PostgreSQL — pick one path
+
+**A. PostgreSQL in Docker** (good when Docker Engine is already installed)
+
+From the **repo root** (folder that contains `docker-compose.yml`):
+
+```bash
+export POSTGRES_PASSWORD='choose_a_strong_password'
+docker compose up -d db
+```
+
+This uses the defaults in `docker-compose.yml`: database **`trackonedb`**, user **`trackone`**, port **5432** on the host. Use the **same** password in `control_host/.env` (step 4).
+
+**B. Native PostgreSQL** (no container)
+
+- **Debian / Ubuntu:** install `postgresql`, start the service (`sudo systemctl start postgresql`), then `sudo -u postgres psql` and run:
+
+  ```sql
+  CREATE USER trackone WITH PASSWORD 'choose_a_strong_password';
+  CREATE DATABASE trackonedb OWNER trackone ENCODING 'UTF8';
+  ```
+
+  If the role already exists: `ALTER USER trackone WITH PASSWORD '…';`
+
+- **RHEL 9 / Oracle Linux 9 with PostgreSQL from PGDG** (example: **PostgreSQL 17**, systemd unit **`postgresql-17`**):
+
+  ```bash
+  sudo /usr/pgsql-17/bin/postgresql-17-setup --initdb   # once, if the data directory is not initialized yet
+  sudo systemctl enable --now postgresql-17
+  sudo -u postgres /usr/pgsql-17/bin/psql -c "CREATE USER trackone WITH PASSWORD 'choose_a_strong_password';"
+  sudo -u postgres /usr/pgsql-17/bin/psql -c "CREATE DATABASE trackonedb OWNER trackone ENCODING 'UTF8';"
+  ```
+
+  Adjust paths and service name if your major version differs (`postgresql-16`, etc.).
+
+**Connection settings for Django:** same host as Postgres → `POSTGRES_HOST=localhost`, `POSTGRES_PORT=5432`. Remote database → set host/port and ensure `pg_hba.conf` and firewalls allow the app server.
+
+### 3. Django environment (`.env`)
+
+```bash
+cd control_host
+cp env.example .env
+```
+
+Edit **`.env`**:
+
+- **`POSTGRES_PASSWORD`** — must match the **`trackone`** database password (Docker or native).
+- **`DJANGO_ALLOWED_HOSTS`** — comma-separated; include every hostname or IP you use in the browser or from agents, e.g. `localhost,127.0.0.1,10.0.0.5,app.example.com`. Omitting this on a LAN IP often causes **DisallowedHost** after the connection works.
+- **`DJANGO_DEBUG=1`** is fine for local dev; use **`DJANGO_DEBUG=0`** and a strong **`DJANGO_SECRET_KEY`** toward production.
+
+Optional before building client bundles: **`TRACKONE_PUBLIC_BASE_URL`** (no trailing slash), e.g. `http://10.0.0.5:8000`, so `manage.py build_trackoneagent_bundle` embeds the correct control URL.
+
+### 4. Virtualenv, dependencies, migrations
+
+```bash
+cd control_host    # directory that contains manage.py
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+python manage.py migrate
+python manage.py createsuperuser
+python manage.py create_monitored_host web-01
+```
+
+If **`pip install` fails on Django 5**, the venv’s Python is almost certainly **&lt; 3.10** — install a newer `python3`, remove `.venv`, and repeat this step.
+
+Store the printed **API token** for **trackoneagent** on clients. For a one-step client folder with URL + token embedded:
+
+```bash
+# Optional in .env: TRACKONE_PUBLIC_BASE_URL=http://YOUR_SERVER:8000
+python manage.py build_trackoneagent_bundle web-01 --control-url http://YOUR_SERVER:8000 --zip
+```
+
+### 5. Run the dev server (reachable from other hosts)
+
+```bash
+python manage.py runserver 0.0.0.0:8000
+```
+
+- **`0.0.0.0`** binds **all interfaces** so other machines can use **`http://<server-ip>:8000/`**. Default `runserver` alone often listens only on **127.0.0.1**, which looks like “connection refused” from the LAN.
+- On the server itself, use **`http://127.0.0.1:8000/`** — do not use `http://0.0.0.0:8000/` in the browser (invalid on many clients).
+
+**Useful URLs:** `GET /api/v1/health/`, admin at `/admin/`, charts at `/metrics/dashboard/` (after login).
+
+### 6. Linux firewall (if LAN clients still cannot connect)
+
+Example **firewalld** (RHEL / Fedora family):
+
+```bash
+sudo firewall-cmd --permanent --add-port=8000/tcp
+sudo firewall-cmd --reload
+```
+
+**ufw** (Debian/Ubuntu): `sudo ufw allow 8000/tcp` then `sudo ufw reload`. Match the port if you change it.
+
+### 7. Optional: admin UI via SSH (no public port)
+
+From your laptop, forward local port 8000 to the server’s loopback:
+
+```bash
+ssh -L 8000:127.0.0.1:8000 user@linux-host
+```
+
+On the server run **`python manage.py runserver 127.0.0.1:8000`** (loopback only). Open **`http://127.0.0.1:8000/`** on the laptop while the session is open.
+
+### 8. Production reminder
+
+Do not expose **`runserver`** on the untrusted Internet. Use **Gunicorn** / **Uvicorn** behind **nginx** (or similar), TLS, and plan **metric retention** — see [Scale](#scale-dozens-of-clients-on-one-control-host).
+
+### 9. Next: clients
+
+Install or bundle **trackoneagent** on each monitored machine; see [trackoneagent (Windows or Linux)](#trackoneagent-windows-or-linux).
+
+---
 
 ## Control host (Linux or Windows)
 
