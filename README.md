@@ -62,6 +62,19 @@ The control host is standard Django + PostgreSQL; **Windows works** the same way
 
       In **pgAdmin**: *Login/Group Roles* → create role `trackone`; *Databases* → create database **`trackonedb`** owned by `trackone`.
 
+      **Windows: `'psql' is not recognized'`** — PostgreSQL’s `bin` folder is often **not** on your PATH. You can:
+
+      - Open **SQL Shell (psql)** from the Start menu (pick server, database, user, port; then run the same `CREATE USER` / `CREATE DATABASE` SQL as above), or  
+      - Call `psql` by full path (replace `16` with your installed version — check under `C:\Program Files\PostgreSQL\`):
+
+        ```cmd
+        "C:\Program Files\PostgreSQL\16\bin\psql.exe" -U postgres
+        ```
+
+      - To fix it permanently: *Settings → System → About → Advanced system settings → Environment Variables* → edit **Path** (user or system) → **New** → `C:\Program Files\PostgreSQL\16\bin` → OK, then **open a new** terminal.
+
+      You **do not** need `psql` in PATH for Django if the database and user already exist (e.g. you used **pgAdmin**); set `control_host/.env` and run `python manage.py migrate`.
+
    3. **Configure Django’s database connection** — easiest: create **`control_host/.env`** (same folder as `manage.py`). Copy `control_host/env.example` to `.env` and edit values. **`settings.py` loads `.env` automatically** via `python-dotenv` on startup. If a variable is missing from `.env`, the defaults in `settings.py` apply (`trackonedb` / `trackone` / `trackone` / `localhost` / `5432`)—set at least `POSTGRES_PASSWORD` if yours is not `trackone`.
 
       Alternatively set the same names in your shell or OS environment (they override `.env` if already set in the environment, depending on `load_dotenv` behavior — by default **existing OS env vars are not overwritten**).
