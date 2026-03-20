@@ -1,0 +1,25 @@
+# Client-side: run trackoneagent in Docker (no Python/pip on the host).
+#
+# From the trackone repo root:
+#   1. Copy docker-compose.trackoneagent.yml + trackoneagent/ + monitoring_scripts/ to the client, OR clone the repo.
+#   2. Create agent.docker.env (see trackoneagent/docker.env.example).
+#   3. docker compose -f docker-compose.trackoneagent.yml --env-file agent.docker.env up -d
+#
+# Or use a pre-built image from your registry:
+#   image: your-registry/trackone-agent:1.0
+#   (remove the `build:` block)
+
+services:
+  trackoneagent:
+    build:
+      context: .
+      dockerfile: trackoneagent/Dockerfile
+    image: trackone-agent:latest
+    container_name: trackone-agent
+    restart: unless-stopped
+    environment:
+      TRACKONE_CONTROL_URL: ${TRACKONE_CONTROL_URL}
+      TRACKONE_API_TOKEN: ${TRACKONE_API_TOKEN}
+      TRACKONE_INTERVAL_SECONDS: ${TRACKONE_INTERVAL_SECONDS:-30}
+    # Optional: Linux hosts — see README for host-wide CPU/RAM vs container-only metrics
+    # pid: host

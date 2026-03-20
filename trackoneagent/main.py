@@ -17,7 +17,27 @@ if str(_REPO_ROOT) not in sys.path:
 
 from monitoring_scripts import collect_cpu, collect_disk, collect_memory
 
-logger = logging.getLogger("trackone.agent")
+logger = logging.getLogger("trackone.trackoneagent")
+
+_PIDFILE_PATH: Path | None = None
+
+
+def _remove_pidfile() -> None:
+    global _PIDFILE_PATH
+    if _PIDFILE_PATH is None:
+        return
+    try:
+        _PIDFILE_PATH.unlink(missing_ok=True)
+    except OSError:
+        pass
+    _PIDFILE_PATH = None
+
+
+def _write_pidfile(path: Path) -> None:
+    global _PIDFILE_PATH
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(str(os.getpid()), encoding="utf-8")
+    _PIDFILE_PATH = path
 
 
 def _load_dotenv_simple(path: Path) -> None:
@@ -36,6 +56,18 @@ def _load_dotenv_simple(path: Path) -> None:
             os.environ[key] = val
 
 
+def _load_all_config_files() -> None:
+    """Portable bundle: optional TRACKONE_CONFIG path, then ./config.env, then trackoneagent/config.env."""
+    explicit = os.environ.get("TRACKONE_CONFIG", "").strip()
+    paths: list[Path] = []
+    if explicit:
+        paths.append(Path(explicit))
+    paths.append(_REPO_ROOT / "config.env")
+    paths.append(Path(__file__).resolve().parent / "config.env")
+    for p in paths:
+        _load_dotenv_simple(p)
+
+
 def _utc_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
@@ -49,13 +81,20 @@ def collect_payload() -> dict[str, Any]:
 
 
 def run_loop() -> int:
+    handlers: list[logging.Handler] = [logging.StreamHandler(sys.stderr)]
+    log_path = os.environ.get("TRACKONE_LOGFILE", "").strip()
+    if log_path:
+        fh = logging.FileHandler(log_path, encoding="utf-8")
+        fh.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+        handlers.append(fh)
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(message)s",
+        handlers=handlers,
+        force=True,
     )
 
-    env_file = Path(__file__).resolve().parent / "config.env"
-    _load_dotenv_simple(env_file)
+    _load_all_config_files()
 
     base = os.environ.get("TRACKONE_CONTROL_URL", "").rstrip("/")
     token = os.environ.get("TRACKONE_API_TOKEN", "").strip()
@@ -64,9 +103,17 @@ def run_loop() -> int:
     if not base or not token:
         logger.error(
             "Set TRACKONE_CONTROL_URL and TRACKONE_API_TOKEN "
-            "(optional: copy agent/config.example.env to agent/config.env)."
+            "(copy trackoneagent/config.example.env to trackoneagent/config.env or bundle root config.env)."
         )
         return 1
+
+    pid_raw = os.environ.get("TRACKONE_PIDFILE", "").strip()
+    if pid_raw:
+        p = Path(pid_raw)
+        if not p.is_absolute():
+            p = _REPO_ROOT / p
+        _write_pidfile(p)
+        logger.info("PID file %s (pid=%s)", p, os.getpid())
 
     try:
         interval = max(5, float(raw_interval))
@@ -80,7 +127,7 @@ def run_loop() -> int:
         "Content-Type": "application/json",
     }
 
-    logger.info("TrackOne agent started host=%s interval=%ss url=%s", hostname, interval, url)
+    logger.info("TrackOne trackoneagent started host=%s interval=%ss url=%s", hostname, interval, url)
 
     session = requests.Session()
     while True:
@@ -102,7 +149,10 @@ def run_loop() -> int:
 
 def main() -> int:
     try:
-        run_loop()
+        code = run_loop()
+        return code if code is not None else 0
     except KeyboardInterrupt:
         logger.info("Stopped.")
+    finally:
+        _remove_pidfile()
     return 0

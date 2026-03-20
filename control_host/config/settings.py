@@ -88,3 +88,11 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 # Dashboard: use admin login, return user to requested page via ?next=
 LOGIN_URL = "/admin/login/"
 LOGIN_REDIRECT_URL = "/metrics/dashboard/"
+
+# Base URL agents use to reach this host (no trailing slash). Used by build_trackoneagent_bundle if --control-url omitted.
+TRACKONE_PUBLIC_BASE_URL = os.environ.get("TRACKONE_PUBLIC_BASE_URL", "").strip().rstrip("/")
+
+# Output folder for `manage.py build_trackoneagent_bundle` (default: control_host/agent_bundles/)
+AGENT_BUNDLE_DIR = Path(
+    os.environ.get("TRACKONE_AGENT_BUNDLE_DIR", str(BASE_DIR / "agent_bundles"))
+).resolve()

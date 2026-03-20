@@ -6,7 +6,7 @@ from apps.metrics.models import MonitoredHost, hash_api_token
 
 
 class Command(BaseCommand):
-    help = "Register a monitored host and print a one-time API token for the agent."
+    help = "Register a monitored host and print a one-time API token for trackoneagent."
 
     def add_arguments(self, parser) -> None:
         parser.add_argument("name", type=str, help="Unique slug, e.g. web-01")
@@ -31,5 +31,5 @@ class Command(BaseCommand):
             api_token_hash=hash_api_token(raw),
         )
         self.stdout.write(self.style.SUCCESS(f'Created monitored host "{name}".'))
-        self.stdout.write("Configure the agent with this token (shown once):\n")
+        self.stdout.write("Configure trackoneagent with this token (shown once):\n")
         self.stdout.write(raw)

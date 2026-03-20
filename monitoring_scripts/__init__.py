@@ -1,4 +1,4 @@
-"""Reusable metric collectors for the TrackOne agent."""
+"""Reusable metric collectors for TrackOne trackoneagent."""
 
 from monitoring_scripts.cpu import collect_cpu
 from monitoring_scripts.disk import collect_disk

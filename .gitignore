@@ -4,8 +4,10 @@ __pycache__/
 venv/
 .env
 control_host/env.local
-agent/config.env
+agent.docker.env
 *.sqlite3
 db.sqlite3
+dist/
+control_host/agent_bundles/
 control_host/.env
 contrl_host/.admin

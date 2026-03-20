@@ -1,0 +1,14 @@
+.git
+**/__pycache__
+**/*.pyc
+**/.venv
+**/venv
+control_host
+dist
+packaging
+scripts
+*.md
+.env
+**/agent_bundles
+**/db.sqlite3
+create_monitored_host*.txt
