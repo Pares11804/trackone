@@ -34,7 +34,9 @@ Small monitoring stack: a **control host** (Django + PostgreSQL) receives period
 
 ## Control host (Linux or Windows)
 
-The control host is standard Django + PostgreSQL; **Windows works** the same way as Linux for development and many deployments. Install PostgreSQL natively or run `docker compose up -d db` with **Docker Desktop**. Use a Windows venv (`python -m venv .venv` then `.\.venv\Scripts\Activate.ps1`). For production on Windows, use a Windows-friendly app server (e.g. **Waitress**) or run the app under **WSL2** if you prefer Linux-style Gunicorn/nginx.
+The control host is standard Django + PostgreSQL; **Windows works** the same way as Linux for development and many deployments.
+
+**Oracle Linux VM (e.g. login `oracle@nyvm741`):** step-by-step install, PostgreSQL, firewall, and `runserver 0.0.0.0:8000` — see **[docs/deploy-control-host-oracle-linux-vm.md](docs/deploy-control-host-oracle-linux-vm.md)**. (*“Oracle” here is the Linux user/OS; the app still uses **PostgreSQL**, not Oracle Database, unless you customize Django yourself.*) Install PostgreSQL natively or run `docker compose up -d db` with **Docker Desktop**. Use a Windows venv (`python -m venv .venv` then `.\.venv\Scripts\Activate.ps1`). For production on Windows, use a Windows-friendly app server (e.g. **Waitress**) or run the app under **WSL2** if you prefer Linux-style Gunicorn/nginx.
 
 1. **PostgreSQL** — pick one:
 
