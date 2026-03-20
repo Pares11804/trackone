@@ -16,6 +16,11 @@ from apps.metrics.models import MonitoredHost, MetricIngest, hash_api_token
 from apps.metrics.series import downsample, extract_chart_point
 
 
+@require_GET
+def home(request: HttpRequest):
+    return render(request, "metrics/home.html")
+
+
 def _json_error(message: str, status: int = 400) -> JsonResponse:
     return JsonResponse({"ok": False, "error": message}, status=status)
 

@@ -155,6 +155,7 @@ The control host is standard Django + PostgreSQL; **Windows works** the same way
    python manage.py runserver 0.0.0.0:8000
    ```
 
+   - **Home:** `GET /` — short page with links to the dashboard, admin, and API health (avoids a bare 404 on `http://localhost:8000/`).
    - Health: `GET /api/v1/health/`
    - Ingest: `POST /api/v1/ingest/` with `Authorization: Bearer <token>`
    - **Charts / history:** `GET /metrics/dashboard/` — line charts (CPU %, memory %, disk % over time). Sign in with your **Django admin** user (same account as `/admin/`). Pick a host, time range, or presets (1 h / 6 h / 24 h / 7 d). Data is read from stored ingests (`collected_at` on the horizontal axis).

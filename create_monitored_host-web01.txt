@@ -1,0 +1,5 @@
+PS C:\PVMEHTA\Github\Pares11804\trackone\control_host> python manage.py create_monitored_host web-01
+Created monitored host "web-01".
+Configure the agent with this token (shown once):
+Bt5kaA_HNlBBvwcWC1jPc49OeVLFCvwE4C52CoxwEmE
+PS C:\PVMEHTA\Github\Pares11804\trackone\control_host> 

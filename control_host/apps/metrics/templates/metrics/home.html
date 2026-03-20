@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TrackOne</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 36rem; margin: 3rem auto; padding: 0 1rem; line-height: 1.6; color: #1a1a1a; }
+    h1 { font-size: 1.35rem; }
+    ul { padding-left: 1.2rem; }
+    a { color: #2563eb; }
+  </style>
+</head>
+<body>
+  <h1>TrackOne control host</h1>
+  <p>There is no page at the site root by default. Use:</p>
+  <ul>
+    <li><a href="{% url 'metrics-dashboard' %}">Metrics dashboard</a> (charts — sign in if asked)</li>
+    <li><a href="/admin/">Django admin</a></li>
+    <li><a href="/api/v1/health/">API health</a> (JSON)</li>
+  </ul>
+</body>
+</html>
