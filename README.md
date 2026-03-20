@@ -177,6 +177,32 @@ The control host is standard Django + PostgreSQL; **Windows works** the same way
 
    `GET /metrics/api/series/?host=<id>&from=<ISO8601>&to=<ISO8601>`
 
+### Troubleshooting: “refused to connect” / phone or another PC can’t open the control host
+
+**`ERR_CONNECTION_REFUSED`** on `http://192.168.x.x:8000` means nothing accepted the TCP connection on that port. It is **not** a Django login or `ALLOWED_HOSTS` issue yet (those usually show a response after a connection is made).
+
+Checklist (on the **control host** machine — the one running Django):
+
+1. **Bind to all interfaces**  
+   Use **`python manage.py runserver 0.0.0.0:8000`**, not `runserver` alone.  
+   Default `runserver` often listens only on **127.0.0.1**, so **only that PC** can connect. Other devices (phone, laptop) get **connection refused** when they use the LAN IP (e.g. `192.168.1.185`).
+
+2. **Confirm the server is running**  
+   The terminal must show Django started; leave it open. Try on the **same PC** first: `http://127.0.0.1:8000/api/v1/health/` — if that fails, fix that before testing from the phone.
+
+3. **Correct IP and port**  
+   On Windows: `ipconfig` → **IPv4 Address** of the active adapter (Wi‑Fi/Ethernet). Use **`http://THAT_IP:8000/`** (include **`:8000`** unless you use another port).
+
+4. **Firewall (especially Windows)**  
+   Allow **inbound** TCP on port **8000** (or allow **Python** / **python.exe** on private networks):  
+   *Windows:* *Settings → Privacy & security → Windows Security → Firewall → Advanced settings → Inbound Rules → New Rule… → Port → TCP 8000 → Allow*.  
+   Or temporarily disable the firewall **only for a quick test** on a trusted LAN, then re-enable and add a proper rule.
+
+5. **Same network**  
+   Phone and PC must be on the **same LAN** (or have a route to the server). Guest Wi‑Fi often blocks device-to-device traffic.
+
+After the page loads, if you see **DisallowedHost**, add the IP or `*` to **`DJANGO_ALLOWED_HOSTS`** in `control_host/.env` (e.g. `DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,192.168.1.185`) and restart `runserver`.
+
 ## trackoneagent (Windows or Linux)
 
 ### Can the client run with nothing installed?
