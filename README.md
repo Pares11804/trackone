@@ -139,14 +139,27 @@ python manage.py runserver 0.0.0.0:8000
 
 ### 6. Linux firewall (if LAN clients still cannot connect)
 
-Example **firewalld** (RHEL / Fedora family):
+**Typical symptom:** `curl http://YOUR_SERVER_IP:PORT/api/v1/health/` on the **Linux host itself** returns JSON, but a **browser on another machine** shows **connection refused**, **timed out**, or the page never loads. Django is fine; **inbound TCP to `PORT` is blocked** (host firewall, cloud security group, or corporate network).
+
+Open the **same TCP port** you passed to `runserver` (examples below use **8000** — replace with **8080** or whatever you use).
+
+**firewalld** (RHEL / Oracle Linux / Fedora family):
 
 ```bash
 sudo firewall-cmd --permanent --add-port=8000/tcp
 sudo firewall-cmd --reload
 ```
 
-**ufw** (Debian/Ubuntu): `sudo ufw allow 8000/tcp` then `sudo ufw reload`. Match the port if you change it.
+Confirm: `sudo firewall-cmd --list-ports` (or `--list-all`) should list that port.
+
+**ufw** (Debian/Ubuntu):
+
+```bash
+sudo ufw allow 8000/tcp
+sudo ufw reload
+```
+
+Also allow the port in **cloud / hypervisor** security groups if the server runs in AWS, Azure, OCI, etc. For more causes (bind address, wrong port in the URL), see [Troubleshooting: “refused to connect”](#troubleshooting-refused-to-connect--phone-or-another-pc-cant-open-the-control-host) below.
 
 ### 7. Optional: admin UI via SSH (no public port)
 
@@ -315,29 +328,48 @@ The control host is standard Django + PostgreSQL; **Windows works** the same way
 
 ### Troubleshooting: “refused to connect” / phone or another PC can’t open the control host
 
-**`ERR_CONNECTION_REFUSED`** on `http://192.168.x.x:8000` means nothing accepted the TCP connection on that port. It is **not** a Django login or `ALLOWED_HOSTS` issue yet (those usually show a response after a connection is made).
+**`ERR_CONNECTION_REFUSED`** or a **timeout** when opening `http://<server-ip>:<port>/` usually means the TCP connection never reached Django (wrong bind address, wrong port, process not running, or **firewall**). It is **not** a Django login or `ALLOWED_HOSTS` issue until you actually get an HTTP response (e.g. a Django error page).
+
+**Quick pattern — Linux server, browser on your laptop:**  
+If **`curl http://SERVER_IP:PORT/api/v1/health/`** on the **server SSH session** works but the **laptop browser** does not, the app is listening; **open inbound TCP `PORT` on the Linux firewall** (and any cloud security group). This is a very common “it works locally but not from my PC” fix.
 
 Checklist (on the **control host** machine — the one running Django):
 
-1. **Bind to all interfaces**  
-   Use **`python manage.py runserver 0.0.0.0:8000`**, not `runserver` alone.  
-   Default `runserver` often listens only on **127.0.0.1**, so **only that PC** can connect. Other devices (phone, laptop) get **connection refused** when they use the LAN IP (e.g. `192.168.1.185`).
+1. **Bind to all interfaces (or match your URL)**  
+   Use **`python manage.py runserver 0.0.0.0:8000`** (replace **8000** with your port) so the server accepts connections on every interface.  
+   Default `runserver` alone often listens only on **127.0.0.1**, so **only that PC** can connect via `localhost`; other devices get **connection refused** when they use the LAN IP.  
+   If you bind to **one** address, e.g. **`runserver 10.16.99.197:8080`**, you must browse **`http://10.16.99.197:8080/`** — **`http://localhost:8080/`** on that same machine will **not** work (nothing is listening on `127.0.0.1` for that process).
 
 2. **Confirm the server is running**  
-   The terminal must show Django started; leave it open. Try on the **same PC** first: `http://127.0.0.1:8000/api/v1/health/` — if that fails, fix that before testing from the phone.
+   The terminal must show Django started; leave it open. Use the **exact** port from the `runserver` line (e.g. **8000** vs **8080**).
 
-3. **Correct IP and port**  
-   On Windows: `ipconfig` → **IPv4 Address** of the active adapter (Wi‑Fi/Ethernet). Use **`http://THAT_IP:8000/`** (include **`:8000`** unless you use another port).
+3. **Correct IP and port in the browser**  
+   Use **`http://<IPv4>:<port>/`** — both must match `runserver`.  
+   - **Windows:** `ipconfig` → **IPv4 Address** of the active adapter.  
+   - **Linux:** `ip -br a` or `hostname -I`.  
+   Sanity check from the server: `curl -sS http://127.0.0.1:PORT/api/v1/health/` and/or `curl -sS http://SERVER_IP:PORT/api/v1/health/`.
 
-4. **Firewall (especially Windows)**  
-   Allow **inbound** TCP on port **8000** (or allow **Python** / **python.exe** on private networks):  
-   *Windows:* *Settings → Privacy & security → Windows Security → Firewall → Advanced settings → Inbound Rules → New Rule… → Port → TCP 8000 → Allow*.  
-   Or temporarily disable the firewall **only for a quick test** on a trusted LAN, then re-enable and add a proper rule.
+4. **Firewall — Windows**  
+   Allow **inbound** TCP on the port you use (e.g. **8000**):  
+   *Settings → Privacy & security → Windows Security → Firewall → Advanced settings → Inbound Rules → New Rule… → Port → TCP → Allow*.  
+   Or allow **Python** / **python.exe** on private networks.  
+   Only disable the firewall briefly on a trusted LAN to confirm the diagnosis, then re-enable and add a proper rule.
 
-5. **Same network**  
-   Phone and PC must be on the **same LAN** (or have a route to the server). Guest Wi‑Fi often blocks device-to-device traffic.
+5. **Firewall — Linux (`firewalld`, common on RHEL / Oracle Linux)**  
+   Replace **`PORT`** with your `runserver` port:
 
-After the page loads, if you see **DisallowedHost**, add the IP or `*` to **`DJANGO_ALLOWED_HOSTS`** in `control_host/.env` (e.g. `DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,192.168.1.185`) and restart `runserver`.
+   ```bash
+   sudo firewall-cmd --permanent --add-port=PORT/tcp
+   sudo firewall-cmd --reload
+   ```
+
+   Verify: `sudo firewall-cmd --list-ports`. For **ufw** (Debian/Ubuntu): `sudo ufw allow PORT/tcp` and `sudo ufw reload`.  
+   If the VM is in a cloud, add the same **inbound** rule in the provider’s **security group / NSG**.
+
+6. **Same network / routing**  
+   Phone and PC must reach the server’s IP (same LAN, VPN, or routed path). Guest Wi‑Fi often blocks device-to-device traffic.
+
+After the page loads, if you see **DisallowedHost**, add the hostname or IP to **`DJANGO_ALLOWED_HOSTS`** in `control_host/.env` (e.g. `DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,10.16.99.197`) and restart `runserver`.
 
 ## trackoneagent (Windows or Linux)
 
