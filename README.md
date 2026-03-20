@@ -155,6 +155,8 @@ The control host is standard Django + PostgreSQL; **Windows works** the same way
    python manage.py runserver 0.0.0.0:8000
    ```
 
+   **`0.0.0.0` means “listen on all interfaces”** — do **not** open `http://0.0.0.0:8000/` in a browser (you’ll get an invalid address error). Use **`http://localhost:8000/`** or **`http://127.0.0.1:8000/`** on the same machine; from another PC on the network use **`http://<this-machine-LAN-IP>:8000/`**.
+
    - **Home:** `GET /` — short page with links to the dashboard, admin, and API health (avoids a bare 404 on `http://localhost:8000/`).
    - Health: `GET /api/v1/health/`
    - Ingest: `POST /api/v1/ingest/` with `Authorization: Bearer <token>`
