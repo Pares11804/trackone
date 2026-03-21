@@ -307,6 +307,8 @@ The control host is standard Django + PostgreSQL; **Windows works** the same way
    - Ingest: `POST /api/v1/ingest/` with `Authorization: Bearer <token>`
    - **Charts / history:** `GET /metrics/dashboard/` — line charts (CPU %, memory %, disk % over time). Sign in with your **Django admin** user (same account as `/admin/`). Pick a host, time range, or presets (1 h / 6 h / 24 h / 7 d). Data is read from stored ingests (`collected_at` on the horizontal axis).
 
+   **Agent health on the dashboard:** Above the charts, an **Agent / connectivity** panel shows the **selected** monitored host, optional **hostname hint**, and **Last ingest received** (control-host server time). That timestamp updates on every **successful** `POST /api/v1/ingest/` from **trackoneagent**. **`Never`** means no ingest has succeeded yet (wrong token, URL, firewall, or agent not running). Below that, a **Disk usage by mount** table shows a **`df -h`‑style** snapshot (filesystem, size, used, avail, use %, mount point, fstype) from the **latest stored ingest** for that host—refresh the page after the agent runs to update it. Full history remains in each ingest’s JSON (**Admin → Metric ingests**). The line charts are **historical**: empty or flat lines in your chosen range usually mean no samples were stored in that window, even if **Last ingest** is recent—widen the time range or confirm the agent interval. For a tabular view of all hosts and tokens, use **Admin → Monitored hosts** (`last_seen_at` is the same field).
+
    Optional JSON for integrations (also requires an authenticated browser session or future API key):
 
    `GET /metrics/api/series/?host=<id>&from=<ISO8601>&to=<ISO8601>`
@@ -810,7 +812,7 @@ On the **control host** (browser, logged into Django admin):
 
 1. **Monitored hosts** — the row for this host should show **last_seen_at** updating.  
 2. **Metric ingests** — new rows appearing on the expected interval.  
-3. Optional: **`/metrics/dashboard/`** — charts for that host after enough samples.
+3. Optional: **`/metrics/dashboard/`** — **Agent / connectivity** shows **Last ingest received** for the selected host; charts appear after enough samples in the chosen time range.
 
 If Step 5 passed but Step 7 does not update, confirm the token matches the **same** `MonitoredHost` name you registered and that the agent is still running on the client.
 
@@ -863,12 +865,28 @@ Each POST body:
   "metrics": {
     "cpu": { "percent": 12.3, ... },
     "memory": { "virtual": { ... }, "swap": { ... } },
-    "disk": { "partitions": [ ... ] }
+    "disk": {
+      "partitions": [
+        {
+          "device": "/dev/sda1",
+          "mountpoint": "/",
+          "fstype": "ext4",
+          "total_bytes": 107374182400,
+          "used_bytes": 53687091200,
+          "free_bytes": 53687091200,
+          "percent": 50.0,
+          "size_h": "100G",
+          "used_h": "50G",
+          "avail_h": "50G",
+          "use_pcent": "50%"
+        }
+      ]
+    }
   }
 }
 ```
 
-Rows appear in Django admin as **Metric ingests**; **Monitored hosts** shows `last_seen_at` after each successful push.
+Each ingest stores **all mount points** the agent could read (similar scope to **`df -h`**, via `psutil.disk_partitions(all=True)`; unreadable mounts are skipped). Rows appear in Django admin as **Metric ingests**; **Monitored hosts** shows `last_seen_at` after each successful push.
 
 ## Adding more metrics later
 

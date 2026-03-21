@@ -12,8 +12,47 @@ from django.utils.dateparse import parse_datetime
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_http_methods
 
+from apps.metrics.bytes_format import format_bytes_df_h
 from apps.metrics.models import MonitoredHost, MetricIngest, hash_api_token
 from apps.metrics.series import downsample, extract_chart_point
+
+
+def _disk_df_rows_from_latest_ingest(ing: MetricIngest | None) -> tuple[list[dict[str, Any]], Any]:
+    """Build df -h style rows from the latest stored ingest (backward compatible)."""
+    if ing is None:
+        return [], None
+    payload = ing.payload if isinstance(ing.payload, dict) else {}
+    metrics = payload.get("metrics") if isinstance(payload.get("metrics"), dict) else {}
+    disk = metrics.get("disk") if isinstance(metrics.get("disk"), dict) else {}
+    parts = disk.get("partitions")
+    if not isinstance(parts, list):
+        return [], ing.collected_at
+    rows: list[dict[str, Any]] = []
+    for p in parts:
+        if not isinstance(p, dict):
+            continue
+        tb, ub, fb = p.get("total_bytes"), p.get("used_bytes"), p.get("free_bytes")
+        pct = p.get("percent")
+        use_str = p.get("use_pcent")
+        if not use_str and pct is not None:
+            try:
+                use_str = f"{float(pct):.0f}%"
+            except (TypeError, ValueError):
+                use_str = "—"
+        elif not use_str:
+            use_str = "—"
+        rows.append(
+            {
+                "device": str(p.get("device", "")),
+                "fstype": str(p.get("fstype", "")),
+                "mountpoint": str(p.get("mountpoint", "")),
+                "size_h": p.get("size_h") or format_bytes_df_h(tb),
+                "used_h": p.get("used_h") or format_bytes_df_h(ub),
+                "avail_h": p.get("avail_h") or format_bytes_df_h(fb),
+                "use_pcent": use_str,
+            }
+        )
+    return rows, ing.collected_at
 
 
 @require_GET
@@ -112,12 +151,27 @@ def metrics_dashboard(request: HttpRequest):
             selected_id = cand
     if selected_id is None and default_host is not None:
         selected_id = default_host.pk
+    selected_host = None
+    if selected_id is not None:
+        selected_host = hosts.filter(pk=selected_id).first()
+    latest_ingest = None
+    if selected_host is not None:
+        latest_ingest = (
+            MetricIngest.objects.filter(host=selected_host)
+            .order_by("-collected_at")
+            .only("payload", "collected_at")
+            .first()
+        )
+    disk_df_rows, disk_snapshot_at = _disk_df_rows_from_latest_ingest(latest_ingest)
     return render(
         request,
         "metrics/dashboard.html",
         {
             "hosts": hosts,
             "selected_host_id": selected_id,
+            "selected_host": selected_host,
+            "disk_df_rows": disk_df_rows,
+            "disk_snapshot_at": disk_snapshot_at,
         },
     )
 
