@@ -22,6 +22,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+from trackoneagent.control_url import normalize_control_url
+
 import requests
 
 # Bundle root = parent of `trackoneagent/` package
@@ -296,6 +298,10 @@ def main(argv: list[str] | None = None) -> int:
             keys_loaded = _load_dotenv_simple(path)
             loaded_path = path
             break
+
+    # Fix common typo: TRACKONE_CONTROL_URL=http://http://host/ (duplicate scheme)
+    if os.environ.get("TRACKONE_CONTROL_URL"):
+        os.environ["TRACKONE_CONTROL_URL"] = normalize_control_url(os.environ["TRACKONE_CONTROL_URL"])
 
     r_cfg = _step_config(loaded_path, keys_loaded)
     results.append(r_cfg)

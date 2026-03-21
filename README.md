@@ -17,7 +17,7 @@ Small monitoring stack: a **control host** (Django + PostgreSQL) receives period
 | `monitoring_scripts/` | Shared **measuring tools** (CPU/RAM/disk) that **trackoneagent** calls |
 | [Runbook: Linux control host](#runbook-control-host-on-linux-new-machine) | **Step-by-step** deploy on a new Linux server (PostgreSQL, `.env`, Python venv, migrate, `runserver`, firewall) |
 | [Git troubleshooting (`pull`)](#git-divergent-branches-on-pull) | **Divergent branches** / **local changes would be overwritten by merge** — what they mean and how to fix |
-| [Podman on RHEL / Oracle Linux](#podman-on-rhel-and-oracle-linux) | **`docker` = Podman**, **`docker compose` fails**, **subuid** / **podman-compose** — basics for locked-down or RH-family hosts |
+| [Podman on RHEL / Oracle Linux](#podman-on-rhel-and-oracle-linux) | **`docker` = Podman**, **compose provider**, **subuid**, **cgroup / systemd / D-Bus** over SSH — agent-client notes |
 
 **What the client machine needs installed** is spelled out in [trackoneagent — what to install on the client](#trackoneagent--what-to-install-on-the-client) below.
 
@@ -371,6 +371,43 @@ After the page loads, if you see **DisallowedHost**, add the hostname or IP to *
 
 The control host command removes hand-editing of tokens and URLs; it does **not** remove the need for a Python runtime **unless** you use Docker (or a frozen binary).
 
+### What to copy to the client machine
+
+**Summary:** You need **two folders** side-by-side on the client: **`trackoneagent/`** and **`monitoring_scripts/`**. The parent folder (the **bundle root**) is where you run commands.
+
+```mermaid
+flowchart TD
+    subgraph source["On control host or dev machine"]
+        A1["Option 1: Full repo clone<br/>trackone/<br/>├── trackoneagent/<br/>├── monitoring_scripts/<br/>└── ..."]
+        A2["Option 2: build_trackoneagent_bundle<br/>control_host/agent_bundles/<br/>trackoneagent_<name>/<br/>├── trackoneagent/<br/>├── monitoring_scripts/<br/>└── config.env (pre-filled)"]
+        A3["Option 3: pack_portable_agent.py<br/>dist/trackoneagent/<br/>├── trackoneagent/<br/>├── monitoring_scripts/<br/>├── requirements.txt<br/>└── setup_*.bat / *.sh"]
+    end
+    
+    subgraph client["On client machine (bundle root)"]
+        B["bundle_root/<br/>├── trackoneagent/<br/>│   ├── __init__.py<br/>│   ├── main.py<br/>│   ├── config.env (or root)<br/>│   └── ...<br/>├── monitoring_scripts/<br/>│   ├── cpu.py<br/>│   ├── memory.py<br/>│   ├── disk.py<br/>│   └── __init__.py<br/>├── config.env (root level)<br/>├── requirements.txt<br/>└── .venv/ (created by setup)"]
+    end
+    
+    subgraph docker_path["Docker/Podman path (alternative)"]
+        C["On client: repo root with<br/>├── trackoneagent/<br/>├── monitoring_scripts/<br/>├── trackoneagent/Dockerfile<br/>└── docker-compose.trackoneagent.yml<br/><br/>OR just pull image from registry"]
+    end
+    
+    A1 -->|Copy entire repo| B
+    A2 -->|Copy bundle folder| B
+    A3 -->|Copy dist/trackoneagent| B
+    A1 -->|For Docker build| C
+    A2 -->|For Docker build| C
+    
+    style B fill:#e1f5e1
+    style C fill:#e1f0ff
+```
+
+**Key points:**
+
+- **Bundle root** = the folder that contains **both** `trackoneagent/` and `monitoring_scripts/` as **siblings** (same level).
+- **`config.env`** can be at the **bundle root** OR inside `trackoneagent/` (root wins if both exist).
+- **Docker path:** you still need the repo files **to build** the image (or pull a pre-built image from a registry).
+- **`.venv/`** is created **on the client** by `setup_*.bat` / `setup_*.sh` or manually — **do not copy** a venv from another machine.
+
 ### Which machine do I use for Docker / Podman commands? (control host vs client)
 
 | What you are doing | Run the command **on this machine** | Typical folder (current working directory) |
@@ -510,6 +547,35 @@ podman-compose -f docker-compose.trackoneagent.yml --env-file agent.docker.env u
 | **Rootless / `subuid`** | If **`docker version`** or **`podman info`** reports **no subuid ranges** for your user (common for service accounts like **`oracle`**), **rootless** containers may fail or warn. A **Linux admin** should assign non-overlapping ranges in **`/etc/subuid`** and **`/etc/subgid`** (see **`man subuid`** / your OS hardening guide). Until then, prefer **venv + Python** for the agent, or **rootful** Podman only if your policy allows it. |
 | **Locked-down hosts** | If container tooling is blocked or brittle on **database servers**, use the **non-Docker** trackoneagent path (**venv** + Python **3.10+** alongside system Python). |
 
+#### Agent client: Podman warnings (cgroup, systemd, D-Bus, SSH)
+
+These messages often appear on **RHEL 9 / Oracle Linux 9** (and similar) when you run **`docker`** / **`podman`** as a **non-root** user over **SSH**, under **Ansible**, or without a full **systemd user session** (no graphical login, no “lingering” user session).
+
+**1. `The cgroupv2 manager is set to systemd but there is no systemd user session available`**
+
+Podman is trying to use **systemd** to manage **cgroups** for rootless containers, but your login has **no active user `@session`** (common for bare SSH or automation accounts).
+
+| What to do | Who runs it | Notes |
+|------------|-------------|--------|
+| **`sudo loginctl enable-linger <username>`** | root | Lets your user keep a **systemd user session** even when not logged in (replace `<username>` with e.g. **`ansibleuser`**). Podman’s suggested line **`loginctl enable-linger 1001`** uses the **numeric UID** — only use that if it matches **`id -u`** for that user. After enabling, **log out and SSH back in** (or reboot) and retry **`docker version`**. |
+| **Ignore if things still work** | — | The next line **`Falling back to --cgroup-manager=cgroupfs`** means Podman continues with a different cgroup driver; many **trackoneagent** images run fine. |
+| **Force cgroupfs** (optional) | user | To prefer **cgroupfs** without enabling lingering, create or edit **`~/.config/containers/containers.conf`** (rootless user override) and set under **`[engine]`**: **`cgroup_manager = "cgroupfs"`** (see **`man containers.conf`** on your OS). |
+
+**2. `Failed to add pause process to systemd sandbox cgroup: dbus: couldn't determine address of session bus`**
+
+Usually the **same situation**: rootless Podman expects a **user D-Bus** / **systemd --user** session. **`loginctl enable-linger`** (above) typically fixes it. Also ensure you are not stripping **`XDG_RUNTIME_DIR`** in SSH/Ansible; over SSH it should normally be set (e.g. **`/run/user/<uid>`**).
+
+**3. `Error: looking up compose provider failed` (and `podman-compose` not found)**
+
+Unrelated to cgroups: you still need a **Compose** implementation. Install **`podman-compose`** and use the **`podman-compose`** command for **`docker-compose.trackoneagent.yml`** (see the table above). Example: **`sudo dnf install podman-compose`** on EL9, or **`python3 -m pip install --user podman-compose`** and add **`~/.local/bin`** to **`PATH`**.
+
+**Quick checklist (trackoneagent on a Podman client)**
+
+1. **`id -u`** — note UID if an admin will run **`loginctl enable-linger`**.  
+2. Prefer **`loginctl enable-linger <your_login_name>`** once (as root) for service-style users (**`ansibleuser`**, deploy accounts, etc.).  
+3. Install **`podman-compose`**; use **`podman-compose -f docker-compose.trackoneagent.yml …`** instead of **`docker compose`**.  
+4. If **`docker version`** still warns but **`podman run`** / **`podman-compose up`** succeeds, you can treat warnings as **non-fatal** unless something actually fails.
+
 **Why not `http://localhost:8000` inside the container?**  
 Inside a container, **`localhost` means “this container,”** not your PC. To reach the TrackOne **control host** on another machine, use that machine’s **IP or hostname**. If the control host runs **on the same Windows/Mac as Docker Desktop**, try **`http://host.docker.internal:8000`** so the container can reach the host.
 
@@ -530,6 +596,8 @@ The repo includes **`trackoneagent/Dockerfile`** and **`docker-compose.trackonea
    ```
 
    On **Podman-only** hosts where **`docker compose`** fails, use **`podman-compose`** with the same **`-f`** and **`--env-file`** (see [Podman on RHEL and Oracle Linux](#podman-on-rhel-and-oracle-linux)).
+
+   If **`docker version`** prints **cgroup / systemd / D-Bus session** warnings (typical over **SSH** for users like **`ansibleuser`**), see **[Agent client: Podman warnings](#agent-client-podman-warnings-cgroup-systemd-d-bus-ssh)** — often **`sudo loginctl enable-linger <username>`** (as root) plus installing **`podman-compose`** fixes the experience.
 
 2. Or **build once** (on the **client** or on a **build PC**), then run the image on **each client**:
 
@@ -592,6 +660,32 @@ You need a **parent folder** (call it the **bundle root**) that contains **both*
 
 - `trackoneagent/`
 - `monitoring_scripts/`
+
+**Required structure on the client:**
+
+```mermaid
+graph TD
+    A["bundle_root/ (your working directory)"] --> B["trackoneagent/"]
+    A --> C["monitoring_scripts/"]
+    A --> D["config.env (optional, at root)"]
+    A --> E[".venv/ (created by setup)"]
+    
+    B --> B1["__init__.py"]
+    B --> B2["main.py"]
+    B --> B3["config.env (alternative location)"]
+    B --> B4["requirements.txt"]
+    
+    C --> C1["cpu.py"]
+    C --> C2["memory.py"]
+    C --> C3["disk.py"]
+    C --> C4["__init__.py"]
+    
+    style A fill:#fff4e1
+    style B fill:#e1f5e1
+    style C fill:#e1f5e1
+    style D fill:#ffe1e1
+    style E fill:#f0f0f0
+```
 
 **Ways to get that layout:**
 
@@ -657,14 +751,15 @@ TRACKONE_INTERVAL_SECONDS=30
 ```
 
 - **No trailing slash** on the URL.  
-- Use the control host’s **IP or hostname** as seen **from this client** (not `localhost` unless Django really runs on this same machine).  
-- **Firewall:** client must be allowed to make **outbound** HTTP/HTTPS to that host and port.
+- **Exactly one scheme:** use `http://10.16.99.197:8080` — **not** `http://http://10.16.99.197:8080` (a duplicated `http://` often happens if you paste a full URL next to a template that already had `http://`). That broken form makes `agent_check` show **`host=http`** in the URL-parse step and **TCP connect** fails with **Name or service not known**. Current **trackoneagent** versions **auto-correct** a duplicated `http://` or `https://` when possible; fixing **`config.env`** is still best.
+- Use the control host’s **IP or hostname** as seen **from this client** (e.g. agent on **NYVM737** → control **`10.16.99.197:8080`**, not `localhost` unless Django runs on the same box).  
+- **Firewall / routing:** the **agent host** must allow **outbound** TCP to the control host’s **port** (e.g. **8080**), and the network must route to **`10.16.99.197`**.
 
 ---
 
 #### Step 5 — Verify connectivity and collectors (before long-running agent)
 
-With the **venv still activated** and **cwd = bundle root**:
+With the **venv still activated** and **`cd` = bundle root** (the folder that contains **`trackoneagent/`** and **`monitoring_scripts/`** — **not** inside **`trackoneagent/`** itself):
 
 ```bash
 python -m trackoneagent.agent_check
@@ -679,6 +774,14 @@ python -m trackoneagent.agent_check --skip-pidfile
 **What success looks like:** each line shows `[OK ]`, ending with `Summary: all checks passed.`
 
 **If something fails**, read the block under that step — it names the failing check (config, local metrics, TCP, HTTP health, HTTP ingest). Fix that layer (wrong URL, wrong token, firewall, control host down) and run `agent_check` again.
+
+**Common mistakes**
+
+| Symptom | Cause | Fix |
+|--------|--------|-----|
+| **`ModuleNotFoundError: No module named 'trackoneagent'`** | You ran **`python -m trackoneagent.agent_check`** from inside the **`trackoneagent/`** subdirectory. | **`cd`** to the **bundle root** (parent of **`trackoneagent/`**), activate **`.venv`**, run the same command again. |
+| **URL line shows `http://http://...`** or **URL parse** shows **`host=http`** | **`TRACKONE_CONTROL_URL`** has a **double** `http://` (or `https://`) in **`config.env`**. | Edit **`config.env`**: one scheme only, e.g. **`TRACKONE_CONTROL_URL=http://10.16.99.197:8080`**. |
+| **TCP connect … Name or service not known** | Often the **double-`http://`** bug (hostname becomes the literal string **`http`**). Less often: wrong hostname, DNS, or no route to the control IP. | Fix URL; from the agent host run **`curl -sS http://10.16.99.197:8080/api/v1/health/`** (adjust IP/port). |
 
 ---
 

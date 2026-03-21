@@ -17,6 +17,8 @@ if str(_REPO_ROOT) not in sys.path:
 
 from monitoring_scripts import collect_cpu, collect_disk, collect_memory
 
+from trackoneagent.control_url import normalize_control_url
+
 logger = logging.getLogger("trackone.trackoneagent")
 
 _PIDFILE_PATH: Path | None = None
@@ -96,7 +98,7 @@ def run_loop() -> int:
 
     _load_all_config_files()
 
-    base = os.environ.get("TRACKONE_CONTROL_URL", "").rstrip("/")
+    base = normalize_control_url(os.environ.get("TRACKONE_CONTROL_URL", ""))
     token = os.environ.get("TRACKONE_API_TOKEN", "").strip()
     raw_interval = os.environ.get("TRACKONE_INTERVAL_SECONDS", "30")
 
