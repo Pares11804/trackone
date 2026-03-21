@@ -98,31 +98,6 @@
     .health-ok { color: #34d399; }
     .health-warn { color: #fbbf24; }
     .health-bad { color: #f87171; }
-    .df-table-wrap { overflow-x: auto; margin-bottom: 1.25rem; }
-    .df-table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 0.8rem;
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      overflow: hidden;
-    }
-    .df-table caption {
-      text-align: left;
-      padding: 0.6rem 0.85rem;
-      font-size: 0.75rem;
-      color: var(--muted);
-      border-bottom: 1px solid var(--border);
-    }
-    .df-table th, .df-table td {
-      padding: 0.45rem 0.65rem;
-      text-align: left;
-      border-bottom: 1px solid var(--border);
-    }
-    .df-table th { color: var(--muted); font-weight: 600; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.03em; }
-    .df-table tbody tr:last-child td { border-bottom: none; }
-    .df-table td.mono { font-family: ui-monospace, monospace; font-size: 0.78rem; }
   </style>
 </head>
 <body>
@@ -183,47 +158,6 @@
         <dd style="color:var(--muted)">Use the time range and Load charts / presets. No points in range can mean the agent was off then, or widen the window.</dd>
       </dl>
     </section>
-    <div class="df-table-wrap">
-      <table class="df-table">
-        <caption>
-          Disk usage by mount (<code>df -h</code> style) — from latest stored ingest
-          {% if disk_snapshot_at %}
-            <span style="color:var(--muted)"> · sample time {{ disk_snapshot_at }}</span>
-          {% endif %}
-          <span style="color:var(--muted)"> · refresh page after new agent pushes to update</span>
-        </caption>
-        <thead>
-          <tr>
-            <th>Filesystem</th>
-            <th>Size</th>
-            <th>Used</th>
-            <th>Avail</th>
-            <th>Use%</th>
-            <th>Mounted on</th>
-            <th>Type</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% if disk_df_rows %}
-            {% for row in disk_df_rows %}
-            <tr>
-              <td class="mono">{{ row.device }}</td>
-              <td class="mono">{{ row.size_h }}</td>
-              <td class="mono">{{ row.used_h }}</td>
-              <td class="mono">{{ row.avail_h }}</td>
-              <td>{{ row.use_pcent }}</td>
-              <td class="mono">{{ row.mountpoint }}</td>
-              <td style="color:var(--muted)">{{ row.fstype }}</td>
-            </tr>
-            {% endfor %}
-          {% else %}
-            <tr>
-              <td colspan="7" style="color:var(--muted)">No partition list in the latest ingest yet (start the agent or pick a host with data).</td>
-            </tr>
-          {% endif %}
-        </tbody>
-      </table>
-    </div>
     {% endif %}
     <p id="status"></p>
     {% if not hosts %}
