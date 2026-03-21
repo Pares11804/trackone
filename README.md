@@ -355,18 +355,23 @@ The client package directory is **`trackoneagent/`** (replacing the old `agent/`
 
 ---
 
-#### Step 1 — Install Python 3
+#### Step 1 — Install Python (3.10+; use 3.11 if you prefer)
 
-- **Windows:** install from [python.org](https://www.python.org/downloads/) and enable **“Add python.exe to PATH”**.  
-- **Linux:** e.g. `sudo apt install python3 python3-venv python3-pip` (Debian/Ubuntu).
+**Detailed guide (Windows + Oracle Linux 3.11):** **[docs/install-python-311-client.md](docs/install-python-311-client.md)**
+
+- **Windows (3.11):** download the **Windows installer** from [Python 3.11 releases](https://www.python.org/downloads/release/python-3119/) (or latest 3.11.x), enable **“Add python.exe to PATH”**, install. Optional: `winget install Python.Python.3.11`.  
+- **Oracle Linux 9 (client):** `sudo dnf install -y python3.11 python3.11-pip python3.11-devel` — use **`python3.11`** for the venv: `python3.11 -m venv .venv` (default `python3` may still be 3.9).  
+- **Oracle Linux 8:** run `dnf search python3.11`; if unavailable, use any **Python ≥ 3.10** from your repos or see the doc above.  
+- **Debian / Ubuntu:** e.g. `sudo apt install python3 python3-venv python3-pip`.
 
 **Verify:**
 
 ```bash
 python --version
+# or on OEL: python3.11 --version
 ```
 
-Use **`python3`** on Linux if `python` is not available. You want **3.10 or newer**.
+Use **`python3`** / **`python3.11`** on Linux if `python` is not available. You want **3.10 or newer**.
 
 ---
 
