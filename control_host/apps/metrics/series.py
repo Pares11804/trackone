@@ -30,12 +30,16 @@ def extract_chart_point(payload: dict[str, Any], collected_at: datetime) -> dict
         parts = []
 
     disk_pct: float | None = None
+    disk_mounts: dict[str, float] = {}
     for p in parts:
         if not isinstance(p, dict):
             continue
         v = _num(p.get("percent"))
         if v is not None:
             disk_pct = v if disk_pct is None else max(disk_pct, v)
+        mp = p.get("mountpoint")
+        if isinstance(mp, str) and mp and v is not None:
+            disk_mounts[mp] = v
 
     if timezone.is_naive(collected_at):
         collected_at = timezone.make_aware(collected_at, timezone.get_current_timezone())
@@ -45,6 +49,7 @@ def extract_chart_point(payload: dict[str, Any], collected_at: datetime) -> dict
         "cpu": _num(cpu.get("percent")),
         "memory": _num(virt.get("percent")),
         "disk": disk_pct,
+        "disk_mounts": disk_mounts,
     }
 
 

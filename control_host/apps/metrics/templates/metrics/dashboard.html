@@ -59,6 +59,10 @@
     }
     button.secondary { background: var(--panel); color: var(--text); border: 1px solid var(--border); }
     button:hover { filter: brightness(1.08); }
+    .disk-card-head { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.75rem 1.25rem; margin-bottom: 0.75rem; }
+    .disk-card-head h2 { margin: 0; font-size: 0.95rem; font-weight: 600; color: var(--muted); }
+    .disk-mount-wrap label { margin-bottom: 0.2rem; }
+    .disk-mount-wrap select { min-width: 12rem; }
     .presets { display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; }
     .presets span { font-size: 0.75rem; color: var(--muted); margin-right: 0.25rem; }
     main { padding: 1rem 1.5rem 2rem; max-width: 1200px; margin: 0 auto; }
@@ -235,7 +239,15 @@
         <div class="chart-wrap"><canvas id="chartMem"></canvas></div>
       </div>
       <div class="card" style="grid-column: 1 / -1;">
-        <h2>Disk usage — max across partitions (%)</h2>
+        <div class="disk-card-head">
+          <h2>Disk usage (%)</h2>
+          <div class="disk-mount-wrap">
+            <label for="diskMount">Mountpoint</label>
+            <select id="diskMount" name="diskMount" aria-label="Disk mountpoint for chart">
+              <option value="__max__">Max (all mounts)</option>
+            </select>
+          </div>
+        </div>
         <div class="chart-wrap"><canvas id="chartDisk"></canvas></div>
       </div>
     </div>
@@ -308,15 +320,98 @@
   };
 
   let chartCpu, chartMem, chartDisk;
+  const diskMountEl = document.getElementById("diskMount");
 
-  function makeChart(canvasId, label, borderColor, fillColor, points, key) {
-    const labels = points.map(function (p) {
+  function buildTimeLabels(points) {
+    return points.map(function (p) {
       try {
         return new Date(p.t).toLocaleString();
       } catch (e) {
         return p.t;
       }
     });
+  }
+
+  function diskSeriesValues(points, mountKey) {
+    return points.map(function (p) {
+      if (mountKey === "__max__") {
+        const v = p.disk;
+        return v === null || v === undefined ? null : v;
+      }
+      const dm = p.disk_mounts;
+      if (!dm || typeof dm !== "object") return null;
+      const v = dm[mountKey];
+      return v === null || v === undefined ? null : v;
+    });
+  }
+
+  function collectMountPoints(points) {
+    const s = new Set();
+    points.forEach(function (p) {
+      const dm = p.disk_mounts;
+      if (dm && typeof dm === "object") {
+        Object.keys(dm).forEach(function (k) {
+          s.add(k);
+        });
+      }
+    });
+    return Array.from(s).sort(function (a, b) {
+      return a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
+    });
+  }
+
+  function populateDiskMountSelect(points) {
+    const prev = diskMountEl.value;
+    const mounts = collectMountPoints(points);
+    diskMountEl.innerHTML = "";
+    const optMax = document.createElement("option");
+    optMax.value = "__max__";
+    optMax.textContent = "Max (all mounts)";
+    diskMountEl.appendChild(optMax);
+    mounts.forEach(function (m) {
+      const o = document.createElement("option");
+      o.value = m;
+      o.textContent = m;
+      diskMountEl.appendChild(o);
+    });
+    if (prev === "__max__" || mounts.indexOf(prev) >= 0) {
+      diskMountEl.value = prev;
+    } else {
+      diskMountEl.value = "__max__";
+    }
+  }
+
+  function diskChartLabel(mountKey) {
+    if (mountKey === "__max__") return "Max across mounts %";
+    return "Mount " + mountKey + " %";
+  }
+
+  function makeDiskChart(points, mountKey) {
+    const labels = buildTimeLabels(points);
+    window.__trackoneLabels = labels;
+    const data = diskSeriesValues(points, mountKey);
+    if (chartDisk) chartDisk.destroy();
+    chartDisk = new Chart(document.getElementById("chartDisk"), {
+      type: "line",
+      data: {
+        labels: labels,
+        datasets: [{
+          label: diskChartLabel(mountKey),
+          data: data,
+          borderColor: "rgb(251, 191, 36)",
+          backgroundColor: "rgba(251, 191, 36, 0.15)",
+          tension: 0.2,
+          spanGaps: true,
+          pointRadius: 0,
+          borderWidth: 2
+        }]
+      },
+      options: commonOptions
+    });
+  }
+
+  function makeChart(canvasId, label, borderColor, fillColor, points, key) {
+    const labels = buildTimeLabels(points);
     window.__trackoneLabels = labels;
     const data = points.map(function (p) {
       const v = p[key];
@@ -373,6 +468,7 @@
         return;
       }
       const pts = j.points || [];
+      window.__trackoneLastPoints = pts;
       statusEl.textContent = pts.length
         ? "Showing " + pts.length + " points (" + j.host_name + ", " + j.from + " → " + j.to + ")."
         : "No samples in this range.";
@@ -383,12 +479,18 @@
       if (chartDisk) chartDisk.destroy();
       chartCpu = makeChart("chartCpu", "CPU %", "rgb(61, 139, 253)", "rgba(61, 139, 253, 0.15)", pts, "cpu");
       chartMem = makeChart("chartMem", "Memory %", "rgb(52, 211, 153)", "rgba(52, 211, 153, 0.15)", pts, "memory");
-      chartDisk = makeChart("chartDisk", "Disk (max) %", "rgb(251, 191, 36)", "rgba(251, 191, 36, 0.15)", pts, "disk");
+      populateDiskMountSelect(pts);
+      makeDiskChart(pts, diskMountEl.value);
     } catch (e) {
       statusEl.textContent = String(e);
       statusEl.className = "error";
     }
   }
+
+  diskMountEl.addEventListener("change", function () {
+    if (!window.__trackoneLastPoints || !window.__trackoneLastPoints.length) return;
+    makeDiskChart(window.__trackoneLastPoints, diskMountEl.value);
+  });
 
   document.getElementById("load").addEventListener("click", loadCharts);
   document.querySelectorAll("[data-preset]").forEach(function (btn) {
