@@ -28,9 +28,9 @@ Use `sudo` for steps that install system packages or change firewall rules. If `
 
 ## 2. Install system packages
 
-**Python 3** and **PostgreSQL** (pick one database approach).
+**Python 3** and **PostgreSQL** on the VM (**native** install — same as the main README; no Docker for the database here).
 
-### Option A — PostgreSQL on the VM (typical)
+### PostgreSQL on the VM
 
 ```bash
 sudo dnf install -y python3 python3-pip python3-devel git
@@ -50,16 +50,6 @@ Create DB user and database (adjust password):
 sudo -u postgres psql -c "CREATE USER trackone WITH PASSWORD 'YOUR_STRONG_PASSWORD';"
 sudo -u postgres psql -c "CREATE DATABASE trackonedb OWNER trackone;"
 ```
-
-### Option B — PostgreSQL in Docker on the same VM
-
-Install Docker Engine (Oracle Linux docs), then from the **TrackOne repo root** on the VM:
-
-```bash
-docker compose up -d db
-```
-
-Use `POSTGRES_HOST=localhost`, `POSTGRES_PORT=5432`, and the same user/password as in `docker-compose.yml` unless you changed them.
 
 ---
 

@@ -1,4 +1,5 @@
-# Optional PostgreSQL for local/dev control host (Linux or Docker Desktop).
+# Optional PostgreSQL-in-container for experiments (not the path in README.md;
+# the documented control host uses native PostgreSQL on the server).
 services:
   db:
     image: postgres:16-alpine
